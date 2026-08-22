@@ -1,15 +1,5 @@
 #!/usr/bin/env node
 'use strict';
-// The launcher menu — the right-docked sidebar, and the popup.
-//
-// One pane, one view: the menu. Every row LAUNCHES something and then gets out
-// of the way — an agent in a pane of its own, a GUI app, or one of the three
-// workspace tools, which are panes of their own too now (bin/tool-launch.js).
-// Nothing opens inside this pane, which is why there is no view stack to walk
-// back up and why `q` means the same thing wherever you press it.
-//
-// The pane is sized once, when it is docked (or by the popup's own manifest
-// dimensions), and never resizes itself afterwards.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -19,27 +9,22 @@ const { List } = require('../lib/tui');
 const { App, selfPaneId, requireTTY } = require('../lib/app');
 const { AGENTS } = require('../lib/agents');
 const { APPS, resolveApp, openApp } = require('../lib/apps');
-const { configDir, OWNER_TOKEN } = require('../lib/context');
+const { configDir, OWNER_TOKEN, toolOf } = require('../lib/context');
+const stash = require('../lib/stash');
 const { TOOLS } = require('../lib/views');
 const { icon, sgr } = require('../lib/icons');
 
 const ROOT = path.resolve(__dirname, '..');
 const LOG = path.join(configDir(), 'launcher.log');
 
-// Footer actions for the menu.
 const DEFAULT_ACTIONS = [
   { key: 'enter', label: 'run' },
   { key: 'r', label: 'reload' },
   { key: 'q', label: 'quit' },
 ];
 
-// The docked width lives in lib/dock.js, not here: it is decided by the split
-// that creates the pane, and this program never resizes anything.
 const argv = process.argv.slice(2);
 
-// Running as a popup instead of a docked pane. A popup sits outside the split
-// tree at fixed cell dimensions, and there is no reason for it to linger once it
-// has launched something.
 const POPUP = argv.includes('--popup');
 const POPUP_ACTIONS = [
   { key: 'enter', label: 'run' },
@@ -47,14 +32,13 @@ const POPUP_ACTIONS = [
   { key: 'escape', label: 'close' },
 ];
 
-/** Run one of our own helper scripts detached, logging to launcher.log. */
 function runHelper(script, args, env = {}) {
   let fd = 'ignore';
   try {
     fs.mkdirSync(path.dirname(LOG), { recursive: true });
     fd = fs.openSync(LOG, 'a');
   } catch (_) {
-    /* logging is best-effort */
+
   }
   const child = spawn(process.execPath, [path.join(ROOT, 'bin', script), ...args], {
     detached: true,
@@ -65,7 +49,6 @@ function runHelper(script, args, env = {}) {
   child.unref();
 }
 
-/** Pass the pane we resolved down to helpers so they agree on the target. */
 function paneEnv(app) {
   const env = {};
   if (app.ctx.pane) {
@@ -75,16 +58,9 @@ function paneEnv(app) {
   return env;
 }
 
-// ---------------------------------------------------------------- menu view
-
 function menuView() {
   const items = [];
 
-  // Every launcher here skips approval prompts, and the group label is the one
-  // place that says so: the rows themselves are just the agent's name and its
-  // mark, with no badge and no per-row flag spelled out. There is nothing to
-  // choose between on a row — every agent has exactly one entry — so a hint
-  // would only repeat the label.
   items.push({ type: 'group', label: 'AGENTS · YOLO' });
   for (const agent of AGENTS) {
     items.push({
@@ -123,12 +99,33 @@ function menuView() {
     });
   }
 
-  // Each tool opens a pane beside the work pane — wide enough for a target path
-  // or an issue title, and focused rather than duplicated on a second press.
-  // `closeAfter` for the same reason an agent row has it: in a popup, the thing
-  // that just opened is behind the popup.
   items.push({ type: 'blank' });
   items.push({ type: 'group', label: 'WORKSPACE' });
+
+  const inFocusMode = () => {
+    try {
+      const ctx = require('../lib/context').resolveContext();
+      return Boolean(ctx.pane && stash.entryFor(ctx.pane.tab_id));
+    } catch (_) {
+      return false;
+    }
+  };
+  const focused = inFocusMode();
+  items.push({
+    type: 'item',
+    label: 'Focus mode',
+    icon: icon('focus-mode'),
+    iconColor: sgr('focus-mode'),
+    closeAfter: true,
+    hint: focused ? 'on' : '',
+    run: (a) => {
+      a.refreshContext();
+      const on = a.ctx.pane ? Boolean(stash.entryFor(a.ctx.pane.tab_id)) : false;
+      runHelper('focus-mode.js', [], paneEnv(a));
+      a.setStatus(on ? 'restoring the layout…' : 'focusing the work pane…', 'ok');
+    },
+  });
+
   for (const tool of TOOLS) {
     items.push({
       type: 'item',
@@ -137,8 +134,14 @@ function menuView() {
       iconColor: sgr(tool.iconKey),
       closeAfter: true,
       run: (a) => {
+
+        a.refreshContext();
+        const tabId = a.ctx.pane && a.ctx.pane.tab_id;
+        const open = (a.ctx.panes || []).find(
+          (p) => p.tab_id === tabId && toolOf(p) === tool.key
+        );
         runHelper('tool-launch.js', [tool.key], paneEnv(a));
-        a.setStatus(`opening ${tool.label} pane…`, 'ok');
+        a.setStatus(`${open ? 'closing' : 'opening'} ${tool.label} pane…`, 'ok');
       },
     });
   }
@@ -159,7 +162,7 @@ new App({
   actions: POPUP ? POPUP_ACTIONS : DEFAULT_ACTIONS,
   popup: POPUP,
   paneId: selfPaneId(),
-  // A timestamp, not a key: the value is never read, only its freshness.
+
   stamp: { name: OWNER_TOKEN, value: String(Math.floor(Date.now() / 1000)) },
   closesPane: true,
 }).start();

@@ -2,7 +2,7 @@
 'use strict';
 // Launch (or jump back to) a coding agent.
 //
-//   node agent-launch.js <agent-key> [--tab] [--ratio 0.5] [--reuse] [--dry-run]
+//   node agent-launch.js <agent-key> [--tab] [--ratio 0.5] [--direction left|right|down|up] [--reuse] [--dry-run]
 //
 // Every press starts a NEW instance: the name gets a numeric suffix when the
 // plain one is taken, so `codex-yolo-wa`, `codex-yolo-wa-2`, and so on can run
@@ -20,14 +20,14 @@
 
 const path = require('node:path');
 const h = require('../lib/herdr');
-const { byKey, AGENTS } = require('../lib/agents');
+const { byKey, AGENTS, resolveFibonacciTarget } = require('../lib/agents');
 const { resolveContext, OWNER_TOKEN, configDir } = require('../lib/context');
 const { resolveLaunch } = require('../lib/exe');
 
 function usage(code) {
   const keys = AGENTS.map((a) => `  ${a.key.padEnd(16)} ${a.label}`).join('\n');
   process.stderr.write(
-    `usage: agent-launch.js <agent-key> [--tab] [--ratio N] [--reuse] [--dry-run]\n\n${keys}\n`
+    `usage: agent-launch.js <agent-key> [--tab] [--ratio N] [--direction left|right|down|up] [--reuse] [--dry-run]\n\n${keys}\n`
   );
   process.exit(code);
 }
@@ -45,7 +45,9 @@ const useTab = argv.includes('--tab');
 const reuse = argv.includes('--reuse');
 const dryRun = argv.includes('--dry-run');
 const ratioArg = argv.indexOf('--ratio');
-const ratio = ratioArg !== -1 && argv[ratioArg + 1] ? Number(argv[ratioArg + 1]) : 0.5;
+const customRatio = ratioArg !== -1 && argv[ratioArg + 1] ? Number(argv[ratioArg + 1]) : null;
+const dirArg = argv.indexOf('--direction');
+const explicitDirection = dirArg !== -1 && argv[dirArg + 1] ? argv[dirArg + 1] : null;
 
 // Synchronous sleep — this is a short-lived CLI with no pending event-loop work.
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -100,16 +102,23 @@ function main() {
     }
   }
 
-  // Default: another instance alongside whatever is already running.
   const name = freeName(base, new Set(agents.map((a) => a.name).filter(Boolean)));
-  // Two panes labelled "codex" are indistinguishable in the tab bar, so
-  // carry the instance number over from the name.
+
   const instance = (name.match(/-(\d+)$/) || [])[1] || null;
   const label = instance ? `${agent.label} #${instance}` : agent.label;
 
-  // Resolve (and if needed shim) the executable before touching the layout, so
-  // a missing agent fails without leaving an empty split behind.
   const launch = resolveLaunch(agent.kind, path.join(configDir(), 'shims'));
+
+  const tabPanes = (ctx.panes || []).filter((p) => p.tab_id === ctx.tabId);
+  const targetInfo = useTab
+    ? null
+    : resolveFibonacciTarget({
+        ctx,
+        tabPanes,
+        agentList: agents,
+        explicitDirection,
+        customRatio,
+      });
 
   const plan = {
     agent: agent.key,
@@ -119,13 +128,12 @@ function main() {
     label,
     exe: launch.exe,
     shim: launch.shim,
-    // The PATH value is the inherited one with the shim dir prepended; printing
-    // it in full buries everything else in the plan.
     env: Object.keys(launch.env),
     mode: useTab ? 'tab' : 'split',
+    direction: useTab ? null : targetInfo.direction,
     cwd: ctx.cwd,
-    target: ctx.pane ? ctx.pane.pane_id : null,
-    ratio: useTab ? null : ratio,
+    target: useTab ? null : (targetInfo.targetPane ? targetInfo.targetPane.pane_id : null),
+    ratio: useTab ? null : targetInfo.ratio,
     alreadyRunning: Boolean(running),
   };
 
@@ -151,8 +159,8 @@ function main() {
     paneId = (panes.find((p) => p.focused) || panes[0] || {}).pane_id;
     if (!paneId) throw new Error(`tab ${tabId} created but no pane found in it`);
   } else {
-    if (!ctx.pane) throw new Error('no active pane to split — open a pane first');
-    paneId = h.splitRight(ctx.pane.pane_id, ratio, ctx.cwd, launch.env);
+    if (!targetInfo.targetPane) throw new Error('no active pane to split — open a pane first');
+    paneId = h.splitPane(targetInfo.targetPane.pane_id, targetInfo.direction, targetInfo.ratio, ctx.cwd, launch.env);
     h.focusPane(paneId);
   }
 

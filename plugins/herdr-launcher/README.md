@@ -29,6 +29,7 @@ If a binding ever locks you out: `herdr config reset-keys`.
 | :--- | :--- |
 | `prefix+a` | open the launcher popup (recommended) |
 | `prefix+shift+a` | toggle the docked sidebar (right edge) |
+| `prefix+z` | focus mode: one work pane, launcher still visible |
 | `prefix+alt+l` | Symlinks, in a pane of its own |
 | `prefix+alt+s` | OpenSpec setup, in a pane of its own |
 | `prefix+alt+p` | Plane tasks, in a pane of its own |
@@ -41,6 +42,21 @@ If a binding ever locks you out: `herdr config reset-keys`.
 
 `prefix` is `ctrl+b` unless you changed it. Everything is a prefix binding, so
 nothing can intercept normal typing in a pane.
+
+**`prefix+z` needs herdr's built-in zoom moved out of the way first.** `zoom` in
+the `[keys]` table defaults to `prefix+z`, and a built-in binding **wins over a
+`[[keys.command]]` one for the same chord** — silently: the config reloads with
+no diagnostics, the press zooms as it always did, and `herdr plugin log` shows
+the action was never invoked. `config.example.toml` therefore ships
+
+```toml
+[keys]
+zoom = "prefix+shift+z"
+```
+
+which frees the chord for focus mode and keeps raw zoom one key away. `[keys]`
+has to come **before** the `[[keys.command]]` entries: TOML will not accept a
+table defined after its own sub-table array.
 
 ## Agent launchers
 
@@ -326,6 +342,135 @@ CodingSpace's settings fields:
 { "android-studio": "C:\\Program Files\\Android\\Android Studio1\\bin\\studio64.exe" }
 ```
 
+## Focus mode
+
+`prefix+z`, where you would otherwise bind `pane zoom`: one work pane fills the
+tab and the launcher is still there. Press it again and the layout comes back
+exactly as it was.
+
+```
+  before                     focus mode
+  +------+------+------+     +---------------+------+
+  | work | a    |  SB  |     |     work      |  SB  |
+  +------+------+      | ->  |               |      |
+  | x    | b    |      |     |               |      |
+  +------+------+------+     +---------------+------+
+                              a, b, x -> "launcher stash" tab
+```
+
+**Why it cannot just zoom.** herdr's zoom is decided *above* the split tree:
+while `Tab.zoomed` is set the layout engine ignores the tree and returns one
+`PaneInfo` covering the whole tab area for the focused pane, so nothing else in
+that tab is rendered - a docked launcher included. No plugin flag changes that.
+herdr's own Spaces/Agents sidebar survives zoom because it is **chrome**:
+`compute_view` splits the frame into sidebar and tab surface and draws them
+separately, and its width lives in `session.json` as a top-level `sidebar_width`
+rather than in any tab layout. A plugin can only put a PTY inside the tab
+surface, so the only way to a full-width work pane with the launcher still
+visible is to *empty the tab* instead of zooming it.
+
+So `bin/focus-mode.js` records the tab's split tree, moves every other pane to a
+stash tab, and moves them back on the way out. The panes keep running throughout
+- a move re-parents a pane and the reply carries the same `terminal_id`, so
+agents and builds never notice.
+
+The parts worth knowing:
+
+* **The tree is recorded, not guessed.** `pane layout` returns `panes[]` with
+  rects *and* `splits[]` with a rect, a direction and a ratio each, and a split's
+  rect is the region it divides - so `lib/layout.js` rebuilds the tree by
+  matching rects. The dividing line is the ratio applied to the region and
+  rounded (234 columns at 0.9 renders 211 + 23, and `Math.round` agrees with
+  Rust's `round` on every case measured), with every other edge in the region
+  tried in order of nearness as a fallback. Reading the boundary off the pane
+  edges alone does not work: a pane edge can belong to a divider several levels
+  deeper, so the outermost split gets handed the innermost boundary. A tree that
+  will not resolve returns `null` and focus mode refuses.
+* **A same-tab `pane move` toward an adjacent target is a no-op.** This is the
+  one that shaped the whole design. herdr sees the arrangement it was asked for
+  and changes nothing - `--ratio` included: a two-pane tab at 0.5 asked to move
+  to 0.9 stayed at 0.5, measured. So a pane already in the tab cannot be
+  re-placed or re-sized by moving it; it has to change parents first. The
+  launcher therefore **leaves first and comes back last** on the way in, and is
+  **parked in the stash tab before the replay** on the way out. Its ratio then
+  lands exactly (0.9 of 108 columns, launcher 11).
+* **`--ratio` is the TARGET pane's share**, the same convention as `pane split`,
+  and `--split right|down` is *required* whenever `--tab` is given. There is no
+  "insert to the left", so a replay that needs the anchor on the far side inserts
+  the pair the wrong way round and then `pane swap`s them - the slots keep their
+  ratios, so the recorded number still applies.
+* **The stash tab is made by `pane move --new-tab`**, not `tab create`: a created
+  tab comes with a shell of its own that would have to be cleaned up, while a
+  moved-into tab holds only the moved pane and herdr closes it by itself when the
+  last pane leaves. Nothing to tear down. `bin/watch-tabs.js` skips any tab
+  labelled `launcher stash`, so the watcher never docks a sidebar into
+  scaffolding.
+* **`focus-mode.json` in the config dir is the toggle**, since every action runs
+  in a fresh process - which also means focus mode survives a herdr restart:
+  public pane and tab ids are stable across a snapshot restore.
+* **Panes that exit while stashed are skipped** and their region collapses, the
+  same as if they had been closed in place. If the work pane itself exits, the
+  replay picks another leaf of the recorded tree as its anchor.
+* **It always falls back to `pane zoom --toggle`** - a tab with no launcher in
+  it, or a layout that would not record. The key never feels broken, and the JSON
+  report says which path it took.
+
+**A zoom the plugin did not do cannot be caught.** The obvious alternative — let
+the tab watcher notice any zoom and convert it into focus mode — has no event to
+hang off. Zoom emits nothing: subscribing to `layout.updated` and zooming a pane
+produced zero events for that tab (measured), because zoom changes what is
+rendered, not the tree, and the topic list holds no zoom event at all
+(`workspace.*`, `worktree.*`, `tab.*`, `pane.*`, `layout.updated`). Short of
+polling `pane layout` per tab, the key binding is the only entry point — which is
+why the built-in `zoom` binding has to be moved rather than left to race.
+
+Costs, honestly: the stash tab is visible in the tab bar while focus mode is on,
+and a tab is put back one pane at a time, so a deep layout is several moves
+rather than one flag.
+
+## Surviving a herdr restart
+
+The `[[startup]]` entry runs `bin/startup.js` when the server starts.
+
+What a restart actually loses is narrower than it looks. `session.json` keeps
+every pane's cwd and label, the whole split tree, and it resumes agent panes
+properly - a pane started through `herdr agent start` carries
+`managed_agent_kind` and an `agent_session`, and herdr re-invokes it as
+`claude --resume <id>`. So the agents this plugin launches come back by
+themselves, conversation included.
+
+What it does not keep is the **command in an ordinary pane**: restore spawns a
+plain shell in the recorded cwd. The sidebar therefore comes back as an empty
+shell in the right slot, at the right width, still labelled `Launcher` - and
+since metadata tokens are not persisted either, the tab reads as having no
+launcher at all, so the next toggle would dock a *second* one beside the corpse.
+
+`bin/startup.js` closes that:
+
+* **It adopts rather than docks.** A pane with our label, no tokens, sitting at a
+  shell prompt with nothing running on top of it (`pane process-info`), on the
+  right edge of its tab, gets the launcher run in it and a fresh token stamped.
+  Docking would have left the restored shell standing.
+* **It waits for the restore first.** There is no "restore finished" event and a
+  startup command can run while panes are still being respawned, so it polls
+  `pane list` until the set stops changing (15s cap). Adopting too early would
+  dock a spare launcher into a tab whose sidebar had not come back yet.
+* **It never invents a sidebar.** A tab with no restored launcher pane is left
+  alone: docking one would be inventing a layout the user never had.
+* **It restarts the tab watcher** if `watch.json` says it was running.
+  `watch-tabs.js --start` / `--stop` record that intent, because the pid file
+  cannot: after a reboot a stale pid is indistinguishable from a watcher somebody
+  stopped on purpose.
+* **It prunes `focus-mode.json`** of entries whose tab or stashed panes did not
+  come back.
+
+Manifest details, verified against 0.8.2 by linking a probe manifest:
+`[[startup]]` takes `command` and `platforms` and nothing else - no id, no title.
+There is no `app.startup` **event** to use instead; herdr's hook allowlist is the
+workspace/worktree/tab/pane set, and `on = "app.startup"` links with an
+`unknown event` warning and never fires. The entry uses the same `node -e`
+bootstrap as the popup pane, for the same extended-path reason.
+
 ## Workspace tool panes
 
 Symlinks, OpenSpec and Plane each open in a **pane of their own**:
@@ -351,13 +496,18 @@ Three things about the pane are worth knowing:
   `resolveContext()` refuses to hand back a plugin-owned pane, so the tool lands
   beside the work and the sidebar keeps its columns. The ratio arithmetic is
   `dock.open()`'s, clamp included — a narrow work pane yields less than asked.
-* **A second press focuses it rather than opening another.** This is the
-  opposite of the agent launchers, where another instance is the point: there is
-  one worktree to link and one issue list to read. The pane carries a
-  `herdr-launcher-tool` token whose value is the tool key, which is what
-  `tool-launch.js` looks for — a **different token name** from the sidebar's
-  `herdr-launcher`, because `isOurs()` is what `toggle-launcher.js` reads and a
-  tool pane answering to it would be the pane `prefix+shift+a` closes.
+* **The row is a toggle: a second press closes the pane it opened.** Not a
+  second instance, and not a re-focus — the press that took the columns gives
+  them back. This is the opposite of the agent launchers, where another instance
+  is the point: there is one worktree to link and one issue list to read. The
+  pane carries a `herdr-launcher-tool` token whose value is the tool key, which
+  is what `tool-launch.js` looks for — so pressing Plane closes the Plane pane
+  and not the Symlinks one beside it. It is a **different token name** from the
+  sidebar's `herdr-launcher`, because `isOurs()` is what `toggle-launcher.js`
+  reads and a tool pane answering to it would be the pane `prefix+shift+a`
+  closes. One exception, and it is `lib/app.js`'s `quit()` rule: a tool pane
+  alone in its tab is focused rather than closed, since closing the last pane
+  closes the tab.
 * **It resolves its worktree from the pane it was opened from**, passed in as
   `HERDR_ACTIVE_PANE_ID` / `HERDR_ACTIVE_PANE_CWD` at split time, so the answer
   does not drift if you `cd` inside the tool pane afterwards.
@@ -418,17 +568,26 @@ Every helper works standalone, and each takes `--dry-run`:
 node bin/popup-launcher.js [--no-focus] [--dry-run]
 node bin/toggle-launcher.js [--cols 36] [--open|--close] [--no-watch] [--dry-run]
 node bin/watch-tabs.js [--start|--stop|--status|--once] [--cols 36]
-node bin/agent-launch.js <agent-key> [--tab] [--ratio 0.5] [--dry-run]
+node bin/agent-launch.js <agent-key> [--tab] [--ratio 0.5] [--direction right|down] [--dry-run]
 node bin/tool-launch.js <tool-key> [--cols N] [--ratio N] [--dry-run]
 node bin/app-open.js <app-key> [path] [--no-focus] [--dry-run]
+node bin/focus-mode.js [--enter|--exit] [--dry-run]
+node bin/startup.js [--no-watch] [--timeout 15000] [--dry-run]
 ```
 
 `--no-focus` skips the window-raising pass (and, for Explorer, the reuse check),
 leaving a plain detached launch.
 
-Debugging: `herdr plugin log` has stdout/stderr and exit codes per invocation;
-the sidebar's own detached child processes log to `launcher.log` in the config
-dir, and the tab watcher to `watch-tabs.log` beside it.
+`focus-mode.js --dry-run` prints the tree it recorded and the moves it would
+make, which is the quickest way to see why a tab fell through to zoom.
+`startup.js --dry-run` lists what it would adopt and what it is skipping, per
+tab, without touching anything — the server does not have to be freshly started
+for that to be worth reading.
+
+Debugging: `herdr plugin log` has stdout/stderr and exit codes per invocation
+(the `[[startup]]` run included, tagged `event: startup`); the sidebar's own
+detached child processes log to `launcher.log` in the config dir, the tab watcher
+to `watch-tabs.log`, and the startup pass to `startup.log` beside them.
 
 ## Windows notes
 
@@ -577,11 +736,6 @@ Every one of these cost real debugging time:
 
 ## Not built yet
 
-* **Surviving a herdr restart.** The tab watcher is started by the sidebar (or
-  by its action), not by the server, so a fresh herdr needs one `prefix+a` before
-  new tabs dock themselves again. A `[[startup]]` manifest entry would close that
-  gap; its field schema has not been confirmed against 0.8.2 yet, and a manifest
-  herdr cannot parse takes the whole plugin with it.
 * **Remembering a width.** `--cols` and `sidebar.json` set it per launch; a
   border you drag is not remembered anywhere.
 * **Images instead of glyphs.** herdr's VT answers the Kitty graphics query with

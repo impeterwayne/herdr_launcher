@@ -1,18 +1,5 @@
 #!/usr/bin/env node
 'use strict';
-// Dock / focus / close the launcher sidebar on the RIGHT edge of the focused tab.
-//
-//   node toggle-launcher.js [--cols 36] [--open] [--close] [--dry-run]
-//
-// The splitting itself lives in lib/dock.js, shared with watch-tabs.js.
-//
-// Toggle states mirror herdr-sidebar's decision tree:
-//   no launcher in this tab      -> open, docked right
-//   launcher exists, not focused -> focus it
-//   the focused pane IS ours     -> close it
-//
-// Opening also starts the tab watcher, so every tab created afterwards gets its
-// own sidebar without anyone pressing anything. --no-watch skips that.
 
 const h = require('../lib/herdr');
 const dock = require('../lib/dock');
@@ -27,7 +14,6 @@ const forceClose = argv.includes('--close');
 const colsArg = argv.indexOf('--cols');
 const cols = colsArg !== -1 && argv[colsArg + 1] ? Number(argv[colsArg + 1]) : dock.defaultCols();
 
-/** Fire-and-forget the tab watcher; it no-ops when one is already running. */
 function startWatcher() {
   if (argv.includes('--no-watch')) return;
   const child = spawn(process.execPath, [path.join(__dirname, 'watch-tabs.js'), '--start'], {
@@ -61,7 +47,7 @@ function main() {
 
   if (forceClose) return report({ action: 'noop', reason: 'no launcher pane in this tab' });
 
-  const avoid = mine.map((p) => p.pane_id); // --open with one already docked
+  const avoid = mine.map((p) => p.pane_id);
 
   if (dryRun) {
     const layout = h.paneLayout(focused.pane_id);

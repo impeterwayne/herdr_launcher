@@ -1,11 +1,5 @@
 #!/usr/bin/env node
 'use strict';
-// Open a GUI application at the active pane's directory, and raise its window.
-//
-//   node app-open.js <app-key> [path] [--no-focus] [--dry-run]
-//
-// Always spawns detached: a child of the invoking pane's PTY dies or blocks
-// when that pane closes.
 
 const { byKey, APPS, resolveApp, openApp } = require('../lib/apps');
 const { resolveContext } = require('../lib/context');
