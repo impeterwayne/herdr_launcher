@@ -1,0 +1,178 @@
+# herdr-launcher — CodingSpace-style agent launchers + a right-docked app sidebar.
+#
+# Verified against herdr 0.8.2 on Windows 11.
+#
+# Design notes (the non-obvious ones):
+#
+#  * THE [[panes]] POPUP IS THE ZERO-WIDTH LAUNCHER. A popup is not part of the
+#    split tree, so it is the one presentation herdr's ratio clamp cannot reach:
+#    exact cell dimensions, and no columns taken from the layout while it is
+#    closed. The docked sidebar still exists (toggle-launcher.js via `pane split`
+#    + `pane run`) for people who want one sitting there.
+#
+#  * THE `node -e` BOOTSTRAP IS NOT DECORATION. herdr runs a plugin pane with the
+#    plugin root as its cwd, but hands it as a \\?\-prefixed extended path, and
+#    node cannot resolve a RELATIVE script against that: it throws in node:fs and
+#    exits 1. That is what the old "herdr cannot spawn a relative [[panes]]
+#    command on Windows" note here really was — the program resolves fine, the
+#    script argument does not. An absolute path works but would pin this manifest
+#    to one machine, so the bootstrap strips the prefix and resolves the entry
+#    itself.
+#
+#  * NO [[events]] ENTRY, ON PURPOSE. A manifest hook spawns a process per
+#    event, and on Windows 11 any console-subsystem process in a hook chain
+#    flashes a Windows Terminal window every time it fires. What keeps a sidebar
+#    in every tab here is instead ONE long-lived subscriber — bin/watch-tabs.js,
+#    holding the socket API's tab.created subscription open — which spawns
+#    nothing on the hot path. It is started by the sidebar itself when it opens,
+#    or by the watch-tabs-start action below.
+#
+#  * WORKSPACE TOOLS ARE PANES, NOT SUB-VIEWS. Symlinks, OpenSpec and Plane used
+#    to run inside the sidebar as a view stack; a 36-column column cannot show a
+#    symlink's target path or a Plane issue's title next to its state without
+#    ellipsising both. bin/tool-launch.js splits the WORK pane instead (never the
+#    sidebar - resolveContext() refuses plugin-owned panes) and stamps a
+#    `herdr-launcher-tool` token, which is a different name from the sidebar's
+#    `herdr-launcher` on purpose: isOurs() is what toggle-launcher reads, and a
+#    tool pane answering to it would be the pane prefix+shift+a closes.
+#
+#  * Action ids must be globally unique ACROSS platforms, so the Windows-only
+#    variants carry a `-windows` suffix and both gate on `platforms`.
+#
+#  * Every action runs `node`, which is resolved from PATH rather than baked in
+#    as an absolute path, so this manifest stays machine-independent.
+
+id = "herdr-launcher"
+name = "herdr-launcher"
+version = "0.1.0"
+description = "Fast YOLO agent launchers (opencode/agy/codex/claude) and a right-docked sidebar for Antigravity, Android Studio, VS Code, Explorer, symlinks, OpenSpec and Plane."
+min_herdr_version = "0.8.0"
+platforms = ["linux", "macos", "windows"]
+
+# No [[build]] step: plain CommonJS run by the system node, zero dependencies.
+
+# ------------------------------------------------------------------ popup
+
+[[panes]]
+id = "launcher-popup"
+title = "Launcher"
+placement = "popup"
+# Cells for width, a percentage for height. Sizes below herdr's popup minimum
+# are clamped up; `width = "46"` as a STRING is rejected outright ("string sizes
+# must be percentages like 80%; use a number for cells").
+width = 46
+height = "70%"
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv.push("--popup");require(r+"/bin/launcher.js")']
+
+# ---------------------------------------------------------------- sidebar
+
+[[actions]]
+id = "toggle-launcher"
+title = "Toggle launcher sidebar"
+description = "Dock the launcher on the right edge (focus it if open; close it if focused)."
+command = ["node", "bin/toggle-launcher.js"]
+
+[[actions]]
+id = "launcher-popup-open"
+title = "Launcher (popup)"
+description = "Open the launcher as a session-modal popup: no pane, and no columns taken from the layout."
+command = ["node", "bin/popup-launcher.js"]
+
+[[actions]]
+id = "watch-tabs-start"
+title = "Auto-dock the launcher in new tabs"
+description = "Watch tab.created and dock a launcher sidebar into every tab opened from now on."
+command = ["node", "bin/watch-tabs.js", "--start"]
+
+[[actions]]
+id = "watch-tabs-stop"
+title = "Stop auto-docking in new tabs"
+description = "Stop the tab watcher. Existing sidebars stay where they are."
+command = ["node", "bin/watch-tabs.js", "--stop"]
+
+[[actions]]
+id = "dock-launcher-everywhere"
+title = "Dock a launcher sidebar in every tab"
+description = "One pass over the open tabs: any tab without a launcher gets one."
+command = ["node", "bin/watch-tabs.js", "--once"]
+
+# ------------------------------------------------------ workspace tools
+#
+# Each opens in a PANE of its own, split off the pane you are working in — not
+# inside the launcher sidebar, which is 36 columns and clipped every target path
+# and issue title it was asked to show. A second press focuses the pane that is
+# already open rather than splitting another: there is one worktree to link and
+# one issue list to read.
+
+[[actions]]
+id = "tool-symlinks"
+title = "Symlinks"
+description = "Open the symlink manager for this worktree in its own pane."
+command = ["node", "bin/tool-launch.js", "symlinks"]
+
+[[actions]]
+id = "tool-openspec"
+title = "OpenSpec setup"
+description = "Open the OpenSpec toolkit deployer for this worktree in its own pane."
+command = ["node", "bin/tool-launch.js", "openspec"]
+
+[[actions]]
+id = "tool-plane"
+title = "Plane tasks"
+description = "Open the Plane issue list in its own pane."
+command = ["node", "bin/tool-launch.js", "plane"]
+
+# ------------------------------------------------------- agent launchers
+#
+# YOLO only, by design — no prompts-intact variants. Run the agent CLI
+# directly if you want approvals back.
+
+[[actions]]
+id = "agent-opencode-auto"
+title = "OpenCode (auto)"
+description = "OpenCode with --auto: auto-approves everything not explicitly denied."
+command = ["node", "bin/agent-launch.js", "opencode-auto"]
+
+[[actions]]
+id = "agent-agy-yolo"
+title = "Antigravity CLI (YOLO)"
+description = "Antigravity CLI with --dangerously-skip-permissions."
+command = ["node", "bin/agent-launch.js", "agy-yolo"]
+
+[[actions]]
+id = "agent-codex-yolo"
+title = "Codex (YOLO)"
+description = "Codex with --dangerously-bypass-approvals-and-sandbox. Isolated environments only."
+command = ["node", "bin/agent-launch.js", "codex-yolo"]
+
+[[actions]]
+id = "agent-claude-danger"
+title = "Claude (skip permissions)"
+description = "Claude Code with --dangerously-skip-permissions."
+command = ["node", "bin/agent-launch.js", "claude-danger"]
+
+# ------------------------------------------------------------- GUI apps
+
+[[actions]]
+id = "open-antigravity"
+title = "Open Antigravity IDE"
+description = "Open the active pane's directory in Antigravity IDE."
+command = ["node", "bin/app-open.js", "antigravity"]
+
+[[actions]]
+id = "open-android-studio"
+title = "Open Android Studio"
+description = "Open the active pane's directory in Android Studio."
+command = ["node", "bin/app-open.js", "android-studio"]
+
+[[actions]]
+id = "open-vscode"
+title = "Open VS Code"
+description = "Open the active pane's directory in VS Code."
+command = ["node", "bin/app-open.js", "vscode"]
+
+[[actions]]
+id = "open-explorer"
+title = "Open File Explorer"
+description = "Reveal the active pane's directory in the file manager."
+command = ["node", "bin/app-open.js", "explorer"]

@@ -1,0 +1,145 @@
+# Paste into %APPDATA%\herdr\config.toml (Windows) or ~/.config/herdr/config.toml,
+# then apply without restarting:
+#
+#   herdr server reload-config
+#
+# If a binding ever locks you out:  herdr config reset-keys
+#
+# `prefix` is ctrl+b unless you changed it. Every entry below is a *prefix*
+# binding, so it can never intercept normal typing in a pane.
+
+# --------------------------------------------------------------- sidebar
+
+# The popup is the zero-width launcher: no pane, no columns taken from the
+# layout, icons next to full labels. esc dismisses it, and launching something
+# closes it. Bind that to the key you press most.
+
+[[keys.command]]
+key = "prefix+a"
+type = "plugin_action"
+command = "herdr-launcher.launcher-popup-open"
+description = "launcher popup"
+
+# The docked sidebar is the alternative, for a launcher that stays on screen.
+# One presentation, sized by --cols (36 by default).
+#
+# Rows lead with Nerd Font glyphs. Without a patched font, drop
+#   { "style": "ascii" }
+# into icons.json in the plugin config dir (herdr plugin config-dir
+# herdr-launcher) and every glyph becomes a two-letter mnemonic instead.
+#
+# sidebar.json in the same directory sets the docked width:
+#   { "expandedCols": 36 }
+#
+# tools.json sets how wide a workspace tool's pane asks to be:
+#   { "cols": { "plane": 72 } }
+
+[[keys.command]]
+key = "prefix+shift+a"
+type = "plugin_action"
+command = "herdr-launcher.toggle-launcher"
+description = "launcher sidebar"
+
+# Opening a sidebar already starts the tab watcher, so every tab created
+# afterwards gets its own rail. This is for turning it on without opening one.
+
+[[keys.command]]
+key = "prefix+alt+a"
+type = "plugin_action"
+command = "herdr-launcher.watch-tabs-start"
+description = "auto-dock launcher in new tabs"
+
+# ------------------------------------------------------ workspace tools
+# Each opens in a pane of its own, split off the pane you are working in. A
+# second press focuses the pane that is already open instead of splitting
+# another. `q` or `esc` closes it.
+
+[[keys.command]]
+key = "prefix+alt+l"
+type = "plugin_action"
+command = "herdr-launcher.tool-symlinks"
+description = "symlinks"
+
+[[keys.command]]
+key = "prefix+alt+s"
+type = "plugin_action"
+command = "herdr-launcher.tool-openspec"
+description = "OpenSpec setup"
+
+[[keys.command]]
+key = "prefix+alt+p"
+type = "plugin_action"
+command = "herdr-launcher.tool-plane"
+description = "Plane tasks"
+
+# ---------------------------------------- agents: permission-skipping (!)
+# Each press starts another instance: the second codex in a workspace registers
+# as codex-yolo-wa-2, the third as -3. Add --reuse to a shell binding instead if
+# you want the second press to focus the running agent rather than start one.
+
+[[keys.command]]
+key = "prefix+alt+o"
+type = "plugin_action"
+command = "herdr-launcher.agent-opencode-auto"
+description = "OpenCode (auto)"
+
+[[keys.command]]
+key = "prefix+alt+g"
+type = "plugin_action"
+command = "herdr-launcher.agent-agy-yolo"
+description = "Antigravity CLI (YOLO)"
+
+[[keys.command]]
+key = "prefix+alt+x"
+type = "plugin_action"
+command = "herdr-launcher.agent-codex-yolo"
+description = "Codex (YOLO)"
+
+[[keys.command]]
+key = "prefix+alt+c"
+type = "plugin_action"
+command = "herdr-launcher.agent-claude-danger"
+description = "Claude (skip permissions)"
+
+# ------------------------------------------------------------- GUI apps
+
+[[keys.command]]
+key = "prefix+alt+v"
+type = "plugin_action"
+command = "herdr-launcher.open-vscode"
+description = "open VS Code"
+
+[[keys.command]]
+key = "prefix+alt+e"
+type = "plugin_action"
+command = "herdr-launcher.open-explorer"
+description = "open File Explorer"
+
+# ---------------------------------------------------------------------------
+# Plugin-free variant: if you would rather not link the plugin, drop the
+# type/command pair above and point a "shell" binding straight at the scripts.
+# `shell` is the only type that fits here — `pane` closes when the command
+# exits and `popup` is session-modal.
+#
+# [[keys.command]]
+# key = "prefix+alt+c"
+# type = "shell"
+# command = "node D:\\Quest\\herdr_research\\plugins\\herdr-launcher\\bin\\agent-launch.js claude-danger"
+# description = "Claude (skip permissions)"
+#
+# [[keys.command]]
+# key = "prefix+a"
+# type = "shell"
+# command = "node D:\\Quest\\herdr_research\\plugins\\herdr-launcher\\bin\\toggle-launcher.js"
+# description = "launcher sidebar"
+#
+# For the popup without the plugin, herdr's own popup keybinding type does the
+# same job — it takes the size directly and needs no [[panes]] entry:
+#
+# [[keys.command]]
+# key = "prefix+a"
+# type = "popup"
+# width = 46
+# height = "70%"
+# command = "node D:\\Quest\\herdr_research\\plugins\\herdr-launcher\\bin\\launcher.js --popup"
+# description = "launcher popup"
