@@ -233,6 +233,8 @@ function testViewComponents() {
   const symlinksLib = require('../lib/symlinks');
   assert(typeof symlinksLib.browseFolder === 'function', 'symlinks.browseFolder is exported as a function');
   assert(typeof symlinksLib.addPersistentTarget === 'function', 'symlinks.addPersistentTarget is exported as a function');
+  assert(typeof symlinksLib.create === 'function', 'symlinks.create is exported as a function');
+  assert(typeof symlinksLib.remove === 'function', 'symlinks.remove is exported as a function');
 
   // Verify refresh populates browse item
   const mockApp = {

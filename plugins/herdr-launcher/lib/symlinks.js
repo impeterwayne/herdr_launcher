@@ -161,28 +161,116 @@ function suggestTargets(worktreePath, managed = []) {
 
 function browseFolder(initialDir) {
   if (process.platform === 'win32') {
-    const defaultWinDir = fs.existsSync('D:\\') ? 'D:\\' : initialDir;
     const target =
-      defaultWinDir && fs.existsSync(defaultWinDir)
-        ? defaultWinDir
-        : initialDir && fs.existsSync(initialDir)
-          ? initialDir
+      initialDir && fs.existsSync(initialDir)
+        ? initialDir
+        : fs.existsSync('D:\\')
+          ? 'D:\\'
           : '';
     const initial = target ? target.replace(/'/g, "''") : '';
     const psScript = `
       Add-Type -AssemblyName System.Windows.Forms
-      $f = New-Object System.Windows.Forms.FolderBrowserDialog
-      $f.Description = 'Select folder to link as symlink'
-      $f.ShowNewFolderButton = $true
-      if ('${initial}') { $f.SelectedPath = '${initial}' }
+      $target = '${initial}'
       $top = New-Object System.Windows.Forms.Form
       $top.TopMost = $true
-      $res = $f.ShowDialog($top)
-      if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
-        Write-Output $f.SelectedPath
+      $selected = $null
+      try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public class FolderBrowserExpanded {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SHBrowseForFolderW(ref BROWSEINFO lpbi);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool SHGetPathFromIDListW(IntPtr pidl, StringBuilder pszPath);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, [MarshalAs(UnmanagedType.LPWStr)] string lParam);
+
+    [DllImport("ole32.dll")]
+    private static extern void CoTaskMemFree(IntPtr pv);
+
+    private delegate int BrowseCallbackProc(IntPtr hwnd, uint uMsg, IntPtr lParam, IntPtr lpData);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct BROWSEINFO {
+        public IntPtr hwndOwner;
+        public IntPtr pidlRoot;
+        public string pszDisplayName;
+        public string lpszTitle;
+        public uint ulFlags;
+        public BrowseCallbackProc lpfn;
+        public IntPtr lParam;
+        public int iImage;
+    }
+
+    private const uint BIF_RETURNONLYFSDIRS = 0x0001;
+    private const uint BIF_NEWDIALOGSTYLE = 0x0040;
+    private const uint BIF_USENEWUI = 0x0040 | 0x0010;
+
+    private const uint BFFM_INITIALIZED = 1;
+    private const uint BFFM_SETSELECTIONW = 0x0400 + 103;
+    private const uint BFFM_SETEXPANDED = 0x0400 + 106;
+
+    private static string _initialPath;
+
+    private static int Callback(IntPtr hwnd, uint uMsg, IntPtr lParam, IntPtr lpData) {
+        if (uMsg == BFFM_INITIALIZED) {
+            try {
+                if (System.IO.Directory.Exists("D:\\\\")) {
+                    SendMessage(hwnd, BFFM_SETEXPANDED, (IntPtr)1, "D:\\\\");
+                }
+                if (!string.IsNullOrEmpty(_initialPath) && System.IO.Directory.Exists(_initialPath)) {
+                    SendMessage(hwnd, BFFM_SETEXPANDED, (IntPtr)1, _initialPath);
+                    SendMessage(hwnd, BFFM_SETSELECTIONW, (IntPtr)1, _initialPath);
+                } else if (System.IO.Directory.Exists("D:\\\\")) {
+                    SendMessage(hwnd, BFFM_SETSELECTIONW, (IntPtr)1, "D:\\\\");
+                }
+            } catch {}
+        }
+        return 0;
+    }
+
+    public static string ShowDialog(IntPtr owner, string title, string initialPath) {
+        _initialPath = initialPath;
+        BROWSEINFO bi = new BROWSEINFO();
+        bi.hwndOwner = owner;
+        bi.pszDisplayName = new string('\\0', 260);
+        bi.lpszTitle = title ?? "Select folder to link as symlink";
+        bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_USENEWUI;
+        bi.lpfn = new BrowseCallbackProc(Callback);
+
+        IntPtr pidl = SHBrowseForFolderW(ref bi);
+        if (pidl != IntPtr.Zero) {
+            StringBuilder sb = new StringBuilder(260);
+            if (SHGetPathFromIDListW(pidl, sb)) {
+                CoTaskMemFree(pidl);
+                return sb.ToString();
+            }
+            CoTaskMemFree(pidl);
+        }
+        return null;
+    }
+}
+'@
+        $selected = [FolderBrowserExpanded]::ShowDialog($top.Handle, 'Select folder to link as symlink', $target)
+      } catch {
+        $f = New-Object System.Windows.Forms.FolderBrowserDialog
+        $f.Description = 'Select folder to link as symlink'
+        $f.ShowNewFolderButton = $true
+        if ($target) { $f.SelectedPath = $target }
+        if ($f.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) {
+          $selected = $f.SelectedPath
+        }
+        $f.Dispose()
+      }
+      if ($selected) {
+        Write-Output $selected
       }
       $top.Dispose()
-      $f.Dispose()
     `;
     try {
       const res = spawnSync('powershell.exe', ['-NoProfile', '-STA', '-Command', psScript], {
@@ -190,7 +278,7 @@ function browseFolder(initialDir) {
         windowsHide: true,
         timeout: 120000,
       });
-      const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+      const selected = (res.stdout || '').trim().split(/\\r?\\n/).filter(Boolean).pop();
       return selected && fs.existsSync(selected) ? path.resolve(selected) : null;
     } catch (_) {
       return null;
