@@ -503,19 +503,35 @@ Source defaults to `D:\Quest\CodingSpace\toolkits\OpenSpec`. Override it with
 
 ### Plane
 
-Read-only issue list, opening in the browser on Enter. Defaults to CodingSpace's
+Read-only issue list, opening in the browser on Enter, with offline evidence crawling and task list generation (`plane/TASK_LIST.md`). Defaults to CodingSpace's
 configuration (`baseUrl: "https://plane.itgproduct.com"`, `workspaceSlug: "product"`,
-and default API key) and can inherit `projectPlaneIds` from CodingSpace. Override
-or configure per-project mapping in `plane.json`:
+and default API key) and inherits `projectPlaneIds` from CodingSpace or local `.plane.json`.
+
+**Parent Workspace / Herd Project Resolution & Crawling**:
+Project IDs are resolved automatically for the **parent workspace (herd root)** so all
+worktrees of that repository share the same Plane project ID while remaining distinct from
+other workspaces:
+1. **Interactive project switcher**: Press `p` in the Plane popup (or open Plane when no project is mapped yet) to browse and select a Plane project for the current parent workspace / herd.
+2. **Selective Crawling & Offline Evidence**:
+   - Selecting a project (or pressing `s` / `[s sync]`) opens the **Crawl Task Selection** view, allowing you to choose which task types to crawl and inject:
+     - `Backlog + Todo` (recommended for active sprints)
+     - `Active Tasks (Backlog, Todo, In Progress)`
+     - `All Tasks (All States)`
+     - `Backlog only` / `Todo only` / `In Progress only` / `Done only`
+   - Downloads evidence screenshots (`prnt.sc` $\rightarrow$ `plane/evidence/<taskId>/<id>.png`) and videos (Streamable $\rightarrow$ `plane/evidence/<taskId>/<id>.mp4` + poster).
+   - Generates structured markdown in `plane/TASK_LIST.md` with overview stats and embedded preview links.
+   - Automatically excludes `plane/` and `plane/*` in `.git/info/exclude` so crawled media never pollutes Git status.
+3. **Workspace-local config**: Place a `.plane.json` or `.herdr/plane.json` with `{ "projectId": "uuid" }` in the repo root.
+4. **Global `plane.json` mapping**: Configure per-parent-workspace mapping in `plane.json` (under `projectPlaneIds`):
 
 ```json
 {
   "baseUrl": "https://plane.itgproduct.com",
   "workspaceSlug": "product",
-  "projectId": "uuid",
   "apiKey": "plane_api_...",
   "projectPlaneIds": {
-    "D:/path/to/worktree": "uuid"
+    "D:/path/to/parent-workspace": "uuid",
+    "parent-workspace-name": "uuid"
   }
 }
 ```

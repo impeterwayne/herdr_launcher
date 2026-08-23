@@ -29,7 +29,7 @@ function symlinkView() {
       { key: 'enter', label: 'link' },
       { key: 'b', label: 'browse' },
       { key: 'e', label: 'explore' },
-      { key: 'u', label: 'unlink' },
+      { key: 'd', label: 'delete' },
       { key: 'r', label: 'reload' },
       { key: 'escape', label: 'close' },
     ],
@@ -220,28 +220,73 @@ function openspecView() {
 }
 
 function planeView() {
+  let mode = 'issues'; // 'issues' | 'select-project' | 'select-crawl-scope'
   let inFlight = false;
   let lastKey = '';
   let loaded = false;
 
-  return {
+  const defaultActions = [
+    { key: 'enter', label: 'open' },
+    { key: 's', label: 'sync' },
+    { key: 'p', label: 'project' },
+    { key: 'r', label: 'reload' },
+    { key: 'escape', label: 'close' },
+  ];
+
+  const selectProjectActions = [
+    { key: 'enter', label: 'select' },
+    { key: 'r', label: 'reload' },
+    { key: 'escape', label: 'back' },
+  ];
+
+  const selectCrawlActions = [
+    { key: 'enter', label: 'crawl' },
+    { key: 'escape', label: 'back' },
+  ];
+
+  const viewObj = {
     title: 'Plane',
-    actions: [
-      { key: 'enter', label: 'open' },
-      { key: 'r', label: 'reload' },
-      { key: 'escape', label: 'close' },
-    ],
+    actions: defaultActions,
     list: new List([{ type: 'item', icon: icon('empty'), label: 'loading…', disabled: true }]),
-    refresh(app, options = {}) {
-      const cfg = plane.config();
-      if (!plane.isConfigured(cfg)) {
-        lastKey = '';
-        inFlight = false;
-        loaded = false;
-        const missingProjectOnly = Boolean(cfg && cfg.baseUrl && cfg.workspaceSlug && cfg.apiKey && !cfg.projectId);
-        if (missingProjectOnly) {
+    loadProjects(app, cfg) {
+      mode = 'select-project';
+      this.actions = selectProjectActions;
+      this.list.setItems([{ type: 'item', icon: icon('empty'), label: 'loading projects…', disabled: true }]);
+      if (app && app.render) app.render();
+
+      plane
+        .projects(cfg)
+        .then((projs) => {
+          const parentName = cfg.parentRoot ? path.basename(cfg.parentRoot) : 'Herd';
+          const items = [{ type: 'group', label: `SELECT PROJECT · ${parentName}` }];
+          for (const proj of projs) {
+            const isCurrent = proj.id === cfg.projectId;
+            items.push({
+              type: 'item',
+              label: proj.name,
+              icon: icon(isCurrent ? 'done' : 'plane'),
+              iconColor: sgr(isCurrent ? 'done' : 'plane'),
+              hint: `[${proj.identifier || ''}]`,
+              itemData: { type: 'project', project: proj },
+              run: (a) => {
+                const target = cfg.parentRoot || (a.ctx && a.ctx.cwd) || process.cwd();
+                plane.saveWorkspaceProjectId(target, proj.id);
+                a.setStatus(`linked "${proj.name}" · select tasks to crawl`, 'info');
+                const updatedCfg = plane.config(target);
+                this.loadCrawlOptions(a, updatedCfg);
+              },
+            });
+          }
+          if (!projs.length) {
+            items.push({ type: 'item', icon: icon('empty'), label: '(no projects found)', disabled: true });
+          }
+          this.list.setItems(items);
+          if (app && app.render) app.render();
+        })
+        .catch((err) => {
           this.list.setItems([
-            { type: 'group', label: 'PROJECT ID REQUIRED' },
+            { type: 'group', label: 'ERROR LOADING PROJECTS' },
+            { type: 'item', icon: icon('alert'), label: err.message.split('\n')[0], disabled: true },
             {
               type: 'item',
               icon: icon('empty'),
@@ -249,21 +294,158 @@ function planeView() {
               disabled: true,
               hint: shorten(plane.configPath()),
             },
-            {
-              type: 'item',
-              icon: icon('empty'),
-              label: `workspace: ${cfg.workspaceSlug || 'product'}`,
-              disabled: true,
-            },
-            {
-              type: 'item',
-              icon: icon('empty'),
-              label: 'or map in projectPlaneIds',
-              disabled: true,
-            },
           ]);
+          if (app && app.render) app.render();
+        });
+    },
+    loadCrawlOptions(app, cfg) {
+      mode = 'select-crawl-scope';
+      this.actions = selectCrawlActions;
+      const parentName = cfg.parentRoot ? path.basename(cfg.parentRoot) : 'Workspace';
+      const items = [
+        { type: 'group', label: `SELECT TASKS TO CRAWL · ${parentName}` },
+        {
+          type: 'item',
+          label: 'Backlog + Todo',
+          icon: icon('done'),
+          iconColor: sgr('done'),
+          hint: 'recommended',
+          itemData: { type: 'crawl-preset', categories: ['backlog', 'todo'], label: 'Backlog + Todo' },
+          run: (a) => this.executeCrawl(a, cfg, ['backlog', 'todo'], 'Backlog + Todo'),
+        },
+        {
+          type: 'item',
+          label: 'Active Tasks (Backlog, Todo, In Progress)',
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: 'active tasks',
+          itemData: { type: 'crawl-preset', categories: ['backlog', 'todo', 'in_progress'], label: 'Active Tasks' },
+          run: (a) => this.executeCrawl(a, cfg, ['backlog', 'todo', 'in_progress'], 'Active Tasks'),
+        },
+        {
+          type: 'item',
+          label: 'All Tasks (All States)',
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: 'full export',
+          itemData: { type: 'crawl-preset', categories: ['all'], label: 'All Tasks' },
+          run: (a) => this.executeCrawl(a, cfg, ['all'], 'All Tasks'),
+        },
+        {
+          type: 'item',
+          label: 'Backlog only',
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: '🔴 backlog',
+          itemData: { type: 'crawl-preset', categories: ['backlog'], label: 'Backlog' },
+          run: (a) => this.executeCrawl(a, cfg, ['backlog'], 'Backlog'),
+        },
+        {
+          type: 'item',
+          label: 'Todo only',
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: '🟡 todo',
+          itemData: { type: 'crawl-preset', categories: ['todo'], label: 'Todo' },
+          run: (a) => this.executeCrawl(a, cfg, ['todo'], 'Todo'),
+        },
+        {
+          type: 'item',
+          label: 'In Progress only',
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: '🔵 in progress',
+          itemData: { type: 'crawl-preset', categories: ['in_progress'], label: 'In Progress' },
+          run: (a) => this.executeCrawl(a, cfg, ['in_progress'], 'In Progress'),
+        },
+        {
+          type: 'item',
+          label: 'Done only',
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: '🟢 completed',
+          itemData: { type: 'crawl-preset', categories: ['done'], label: 'Done' },
+          run: (a) => this.executeCrawl(a, cfg, ['done'], 'Done'),
+        },
+      ];
+      this.list.setItems(items);
+      if (app && app.render) app.render();
+    },
+    executeCrawl(app, cfg, categories, label) {
+      const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+      const target = cfg.parentRoot || cwd;
+      app.setStatus(`crawling ${label} tasks & evidence…`, 'info');
+      mode = 'issues';
+      this.actions = defaultActions;
+      this.refresh(app, { force: true });
+      plane
+        .syncProject(target, cfg, { categories }, (msg) => {
+          app.setStatus(msg, 'info');
+          if (app.render) app.render();
+        })
+        .then((res) => {
+          app.setStatus(`synced ${res.taskCount} tasks (${label}) → plane/TASK_LIST.md`, 'ok');
+          this.refresh(app, { force: true });
+        })
+        .catch((err) => {
+          app.setStatus(`crawl failed: ${err.message.split('\n')[0]}`, 'error');
+          if (app.render) app.render();
+        });
+    },
+    onKey(key, app) {
+      if (mode === 'select-project' || mode === 'select-crawl-scope') {
+        if (key === 'escape' || key === 'q') {
+          const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+          const cfg = plane.config(cwd);
+          if (plane.isConfigured(cfg)) {
+            mode = 'issues';
+            this.actions = defaultActions;
+            this.refresh(app);
+            app.render();
+            return true;
+          }
+          return false;
+        }
+        return false;
+      }
+      if (key === 's') {
+        const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+        const cfg = plane.config(cwd);
+        if (!plane.isConfigured(cfg)) {
+          app.setStatus('select a project first to sync tasks', 'error');
+          app.render();
+          return true;
+        }
+        this.loadCrawlOptions(app, cfg);
+        return true;
+      }
+      if (key === 'p') {
+        const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+        const cfg = plane.config(cwd);
+        this.loadProjects(app, cfg);
+        return true;
+      }
+      return false;
+    },
+    refresh(app, options = {}) {
+      const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+      const cfg = plane.config(cwd);
+
+      if (mode === 'select-project') {
+        this.loadProjects(app, cfg);
+        return;
+      }
+
+      if (!plane.isConfigured(cfg)) {
+        lastKey = '';
+        inFlight = false;
+        loaded = false;
+        const missingProjectOnly = Boolean(cfg && cfg.baseUrl && cfg.workspaceSlug && cfg.apiKey && !cfg.projectId);
+        if (missingProjectOnly) {
+          this.loadProjects(app, cfg);
           return;
         }
+        this.actions = defaultActions;
         this.list.setItems([
           { type: 'group', label: 'NOT CONFIGURED' },
           {
@@ -284,6 +466,7 @@ function planeView() {
         return;
       }
 
+      this.actions = defaultActions;
       const cfgKey = `${cfg.baseUrl}|${cfg.workspaceSlug}|${cfg.projectId}|${cfg.apiKey}`;
       const isForced = Boolean(options.force || cfgKey !== lastKey);
 
@@ -350,6 +533,8 @@ function planeView() {
       return this.list.render(height, width);
     },
   };
+
+  return viewObj;
 }
 
 const TOOLS = [

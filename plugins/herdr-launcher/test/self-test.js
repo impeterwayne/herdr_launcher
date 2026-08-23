@@ -228,7 +228,7 @@ function testViewComponents() {
   assert(symlinkView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'symlinkView action footer includes [esc close]');
   assert(symlinkView.actions.some((a) => a.key === 'b' && a.label === 'browse'), 'symlinkView action footer includes [b browse]');
   assert(symlinkView.actions.some((a) => a.key === 'e' && a.label === 'explore'), 'symlinkView action footer includes [e explore]');
-  assert(symlinkView.actions.some((a) => a.key === 'u' && a.label === 'unlink'), 'symlinkView action footer includes [u unlink]');
+  assert(symlinkView.actions.some((a) => a.key === 'd' && a.label === 'delete'), 'symlinkView action footer includes [d delete]');
 
   const symlinksLib = require('../lib/symlinks');
   assert(typeof symlinksLib.browseFolder === 'function', 'symlinks.browseFolder is exported as a function');
@@ -256,11 +256,18 @@ function testViewComponents() {
   assert(planeDef?.popupEntrypoint === 'plane-popup', 'plane has popupEntrypoint plane-popup');
   const planeView = planeDef.view();
   assert(planeView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'planeView action footer includes [esc close]');
+  assert(planeView.actions.some((a) => a.key === 's' && a.label === 'sync'), 'planeView action footer includes [s sync]');
+  assert(planeView.actions.some((a) => a.key === 'p' && a.label === 'project'), 'planeView action footer includes [p project]');
+  assert(planeView.actions.some((a) => a.key === 'enter' && a.label === 'open'), 'planeView action footer includes [enter open]');
+  assert(typeof planeView.loadProjects === 'function', 'planeView supports loadProjects for parent workspace');
+  assert(typeof planeView.loadCrawlOptions === 'function', 'planeView supports loadCrawlOptions for category selection');
 }
 
 function testPlaneConfig() {
-  group('7. Plane Integration & Defaults');
+  group('7. Plane Integration & Parent Workspace Resolution');
+  const os = require('node:os');
   const plane = require('../lib/plane');
+  const context = require('../lib/context');
 
   assert(plane.DEFAULT_PLANE_CONFIG.baseUrl === 'https://plane.itgproduct.com', 'plane default baseUrl matches CodingSpace');
   assert(plane.DEFAULT_PLANE_CONFIG.workspaceSlug === 'product', 'plane default workspaceSlug is product');
@@ -273,12 +280,85 @@ function testPlaneConfig() {
 
   const mapping = {
     'D:/Quest/CodingSpace.worktrees/CodingSpace-Plane': '72f1bdd9-8420-469f-93f7-fe27b6658b9c',
+    'D:/Quest/ParentApp': '11111111-2222-3333-4444-555555555555',
   };
   const exact = plane.resolveProjectId(mapping, 'D:\\Quest\\CodingSpace.worktrees\\CodingSpace-Plane');
   assert(exact === '72f1bdd9-8420-469f-93f7-fe27b6658b9c', 'resolveProjectId matches exact normalized path');
 
   const baseMatch = plane.resolveProjectId(mapping, 'C:\\other\\CodingSpace-Plane');
   assert(baseMatch === '72f1bdd9-8420-469f-93f7-fe27b6658b9c', 'resolveProjectId matches by basename');
+
+  // Test findParentRepoRoot and worktree resolution
+  assert(typeof context.findParentRepoRoot === 'function', 'context.findParentRepoRoot is exported');
+  const repoParent = context.findParentRepoRoot(__dirname);
+  assert(Boolean(repoParent && fs.existsSync(repoParent)), 'findParentRepoRoot resolves repository root for current workspace');
+
+  // Test parent workspace / herd resolution across simulated linked worktree
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-plane-test-'));
+  try {
+    const parentRepo = path.join(tmpDir, 'parent-workspace');
+    const dotGit = path.join(parentRepo, '.git');
+    const wtGitDir = path.join(dotGit, 'worktrees', 'feat-wt');
+    const linkedWorktree = path.join(tmpDir, 'linked-worktree-feat');
+    const subFolder = path.join(linkedWorktree, 'src', 'components');
+
+    fs.mkdirSync(wtGitDir, { recursive: true });
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.writeFileSync(path.join(wtGitDir, 'commondir'), '../..\n', 'utf8');
+    fs.writeFileSync(path.join(linkedWorktree, '.git'), `gitdir: ${wtGitDir}\n`, 'utf8');
+
+    const resolvedParent = context.findParentRepoRoot(subFolder);
+    assert(
+      resolvedParent && path.resolve(resolvedParent).toLowerCase() === path.resolve(parentRepo).toLowerCase(),
+      'findParentRepoRoot resolves main repo root from worktree subfolder'
+    );
+
+    const herdMapping = {
+      [parentRepo]: 'parent-plane-id-999',
+    };
+
+    const resolvedFromWorktree = plane.resolveProjectId(herdMapping, linkedWorktree);
+    assert(resolvedFromWorktree === 'parent-plane-id-999', 'resolveProjectId resolves parent workspace project ID for worktree');
+
+    const resolvedFromSubfolder = plane.resolveProjectId(herdMapping, subFolder);
+    assert(resolvedFromSubfolder === 'parent-plane-id-999', 'resolveProjectId resolves parent workspace project ID for worktree subfolder');
+
+    // Test local .plane.json in parent repository
+    fs.writeFileSync(
+      path.join(parentRepo, '.plane.json'),
+      JSON.stringify({ projectId: 'local-parent-id-888', workspaceSlug: 'local-slug' }),
+      'utf8'
+    );
+    const localCfg = plane.config(subFolder);
+    assert(localCfg.projectId === 'local-parent-id-888', 'plane.config picks up local .plane.json from parent workspace');
+    assert(localCfg.workspaceSlug === 'local-slug', 'plane.config picks up workspaceSlug from local .plane.json');
+
+    // Test task list markdown generator & HTML cleaner
+    assert(typeof plane.generateTaskListMD === 'function', 'plane.generateTaskListMD is exported');
+    assert(typeof plane.syncProject === 'function', 'plane.syncProject is exported');
+    assert(plane.cleanHTML('<p>Test <b>evidence</b> link</p>') === 'Test evidence link', 'plane.cleanHTML strips HTML tags');
+    assert(plane.formatPriority('urgent').includes('Urgent'), 'plane.formatPriority formats urgent with emoji');
+
+    const sampleIssues = [
+      { sequence_id: 101, name: 'Fix Login Crash', state: 's1', priority: 'urgent', description_html: 'Crash log' },
+      { sequence_id: 102, name: 'Improve UI design', state: 's2', priority: 'low', description_html: 'Screenshots' },
+    ];
+    const sampleStateMap = new Map([
+      ['s1', { id: 's1', name: 'Backlog', group: 'backlog' }],
+      ['s2', { id: 's2', name: 'In Progress', group: 'started' }],
+    ]);
+    const md = plane.generateTaskListMD({ workspaceSlug: 'product', projectId: 'test-proj' }, sampleIssues, sampleStateMap);
+    assert(md.includes('Fix Login Crash') && md.includes('Improve UI design'), 'generateTaskListMD includes all task titles');
+    assert(md.includes('Backlog') && md.includes('In Progress'), 'generateTaskListMD categorizes tasks into groups');
+    assert(md.includes('#101') || md.includes('101'), 'generateTaskListMD includes task sequence tags');
+
+    const mdFiltered = plane.generateTaskListMD({ workspaceSlug: 'product', projectId: 'test-proj' }, sampleIssues, sampleStateMap, null, null, ['backlog']);
+    assert(mdFiltered.includes('Fix Login Crash') && !mdFiltered.includes('Improve UI design'), 'generateTaskListMD with [backlog] filter only includes backlog tasks');
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (_) {}
+  }
 }
 
 function main() {

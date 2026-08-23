@@ -78,6 +78,59 @@ function findRepoRoot(dir) {
   return null;
 }
 
+function findParentRepoRoot(dir) {
+  if (!dir) return null;
+  const repoRoot = findRepoRoot(dir);
+  if (!repoRoot) return path.resolve(dir);
+
+  const gitEntry = path.join(repoRoot, '.git');
+  try {
+    const stats = fs.statSync(gitEntry);
+    if (stats.isDirectory()) {
+      return repoRoot;
+    }
+    if (stats.isFile()) {
+      const content = fs.readFileSync(gitEntry, 'utf8');
+      const match = content.match(/^gitdir:\s*(.+)$/m);
+      if (match) {
+        let gitDir = match[1].trim();
+        if (!path.isAbsolute(gitDir)) {
+          gitDir = path.resolve(repoRoot, gitDir);
+        }
+        const commondirFile = path.join(gitDir, 'commondir');
+        if (fs.existsSync(commondirFile)) {
+          const commonRel = fs.readFileSync(commondirFile, 'utf8').trim();
+          const commonGitDir = path.resolve(gitDir, commonRel);
+          return path.dirname(commonGitDir);
+        }
+        const worktreesParent = path.resolve(gitDir, '..', '..');
+        if (
+          path.basename(path.dirname(gitDir)).toLowerCase() === 'worktrees' &&
+          fs.existsSync(path.join(worktreesParent, 'config'))
+        ) {
+          return path.dirname(worktreesParent);
+        }
+      }
+    }
+  } catch (_) {}
+
+  try {
+    const { execFileSync } = require('node:child_process');
+    const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      timeout: 3000,
+      windowsHide: true,
+    }).trim();
+    if (commonDir) {
+      const resolvedCommon = path.resolve(repoRoot, commonDir);
+      return path.dirname(resolvedCommon);
+    }
+  } catch (_) {}
+
+  return repoRoot;
+}
+
 function configDir() {
   const result = h.tryHerdr(['plugin', 'config-dir', OWNER_TOKEN]);
   const raw = result && (result._raw || result.path || result.config_dir);
@@ -109,6 +162,7 @@ module.exports = {
   hasPluginTokens,
   resolveContext,
   findRepoRoot,
+  findParentRepoRoot,
   configDir,
   readConfig,
   writeConfig,
