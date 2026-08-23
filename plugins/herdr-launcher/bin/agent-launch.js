@@ -23,6 +23,7 @@ const h = require('../lib/herdr');
 const { byKey, AGENTS, resolveFibonacciTarget } = require('../lib/agents');
 const { resolveContext, OWNER_TOKEN, configDir } = require('../lib/context');
 const { resolveLaunch } = require('../lib/exe');
+const stash = require('../lib/stash');
 
 function usage(code) {
   const keys = AGENTS.map((a) => `  ${a.key.padEnd(16)} ${a.label}`).join('\n');
@@ -93,7 +94,8 @@ function main() {
   // Scope the name to the workspace so each project's agents stay distinct.
   const base = agentName(agent.key, workspace);
 
-  const agents = h.agentList();
+  const isPlainTerminal = agent.kind === 'terminal' || !agent.kind;
+  const agents = isPlainTerminal ? [] : h.agentList();
   const running = agents.find((a) => a.name === base || a.label === base);
   if (reuse && running && !dryRun) {
     if (h.agentFocus(base)) {
@@ -102,15 +104,35 @@ function main() {
     }
   }
 
-  const name = freeName(base, new Set(agents.map((a) => a.name).filter(Boolean)));
+  const existingPanes = ctx.panes || [];
+  const taken = new Set([
+    ...agents.map((a) => a.name).filter(Boolean),
+    ...existingPanes
+      .map((p) => {
+        const match = String(p.label || '').match(new RegExp(`^${agent.label}(?: #(\\d+))?$`, 'i'));
+        if (match) {
+          const num = match[1] ? `-${match[1]}` : '';
+          return `${base}${num}`;
+        }
+        return null;
+      })
+      .filter(Boolean),
+  ]);
+
+  const name = freeName(base, taken);
 
   const instance = (name.match(/-(\d+)$/) || [])[1] || null;
   const label = instance ? `${agent.label} #${instance}` : agent.label;
 
-  const launch = resolveLaunch(agent.kind, path.join(configDir(), 'shims'));
+  const launch = isPlainTerminal
+    ? { exe: null, native: true, shim: null, env: {} }
+    : resolveLaunch(agent.kind, path.join(configDir(), 'shims'));
+
+  const inFocus = stash.isFocusModeOn();
+  const shouldOpenInTab = useTab || inFocus;
 
   const tabPanes = (ctx.panes || []).filter((p) => p.tab_id === ctx.tabId);
-  const targetInfo = useTab
+  const targetInfo = shouldOpenInTab
     ? null
     : resolveFibonacciTarget({
         ctx,
@@ -129,12 +151,13 @@ function main() {
     exe: launch.exe,
     shim: launch.shim,
     env: Object.keys(launch.env),
-    mode: useTab ? 'tab' : 'split',
-    direction: useTab ? null : targetInfo.direction,
+    mode: shouldOpenInTab ? 'tab' : 'split',
+    direction: shouldOpenInTab ? null : targetInfo.direction,
     cwd: ctx.cwd,
-    target: useTab ? null : (targetInfo.targetPane ? targetInfo.targetPane.pane_id : null),
-    ratio: useTab ? null : targetInfo.ratio,
+    target: shouldOpenInTab ? null : (targetInfo.targetPane ? targetInfo.targetPane.pane_id : null),
+    ratio: shouldOpenInTab ? null : targetInfo.ratio,
     alreadyRunning: Boolean(running),
+    focusMode: inFocus,
   };
 
   if (dryRun) {
@@ -143,7 +166,7 @@ function main() {
   }
 
   let paneId;
-  if (useTab) {
+  if (shouldOpenInTab) {
     const created = h.herdr([
       'tab',
       'create',
@@ -166,6 +189,11 @@ function main() {
 
   h.paneRename(paneId, label);
   h.stampToken(paneId, OWNER_TOKEN, `${OWNER_TOKEN}-agent`, agent.key);
+
+  if (isPlainTerminal) {
+    process.stdout.write(`started ${label} in ${paneId}\n`);
+    return;
+  }
 
   // The freshly spawned shell may not have printed its prompt yet; agent start
   // needs an interactive prompt to type into, so allow one retry.

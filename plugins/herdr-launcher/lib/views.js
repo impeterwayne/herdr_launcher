@@ -27,7 +27,7 @@ function symlinkView() {
       { key: 'enter', label: 'toggle' },
       { key: 'd', label: 'delete' },
       { key: 'r', label: 'reload' },
-      { key: 'q', label: 'close' },
+      { key: 'escape', label: 'close' },
     ],
     list: new List([]),
     refresh(app) {
@@ -113,7 +113,7 @@ function openspecView() {
     actions: [
       { key: 'enter', label: 'deploy' },
       { key: 'r', label: 'reload' },
-      { key: 'q', label: 'close' },
+      { key: 'escape', label: 'close' },
     ],
     list: new List([]),
     refresh(app) {
@@ -173,7 +173,7 @@ function planeView() {
     actions: [
       { key: 'enter', label: 'open' },
       { key: 'r', label: 'reload' },
-      { key: 'q', label: 'close' },
+      { key: 'escape', label: 'close' },
     ],
     list: new List([{ type: 'item', icon: icon('empty'), label: 'loading…', disabled: true }]),
     refresh(app) {
@@ -246,6 +246,7 @@ const TOOLS = [
     label: 'Symlinks',
     menuLabel: 'Symlinks',
     iconKey: 'symlinks',
+    popupEntrypoint: 'symlinks-popup',
     view: symlinkView,
     cols: 52,
   },
@@ -254,6 +255,7 @@ const TOOLS = [
     label: 'OpenSpec',
     menuLabel: 'OpenSpec setup',
     iconKey: 'openspec',
+    popupEntrypoint: 'openspec-popup',
     view: openspecView,
     cols: 44,
   },
@@ -262,6 +264,7 @@ const TOOLS = [
     label: 'Plane',
     menuLabel: 'Plane tasks',
     iconKey: 'plane',
+    popupEntrypoint: 'plane-popup',
     view: planeView,
     cols: 64,
   },

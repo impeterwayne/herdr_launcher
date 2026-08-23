@@ -1,23 +1,17 @@
 #!/usr/bin/env node
 'use strict';
 
-const path = require('node:path');
 const h = require('../lib/herdr');
-const dock = require('../lib/dock');
 const { byKey, TOOLS } = require('../lib/views');
-const { resolveContext, readConfig, OWNER_TOKEN, TOOL_TOKEN, toolOf } = require('../lib/context');
 
-const ROOT = path.resolve(__dirname, '..');
-const JS_ENTRY = path.join(ROOT, 'bin', 'tool-pane.js');
-
-const CONFIG = readConfig('tools.json') || {};
+const PLUGIN = 'herdr-launcher';
 
 const argv = process.argv.slice(2);
 
 function usage(code) {
   const keys = TOOLS.map((t) => `  ${t.key.padEnd(10)} ${t.label}`).join('\n');
   process.stderr.write(
-    `usage: tool-launch.js <tool-key> [--cols N] [--ratio N] [--dry-run]\n\n${keys}\n`
+    `usage: tool-launch.js <tool-key> [--no-focus] [--dry-run]\n\n${keys}\n`
   );
   process.exit(code);
 }
@@ -30,85 +24,23 @@ if (!tool) {
   usage(1);
 }
 
-const flag = (name) => {
-  const i = argv.indexOf(name);
-  return i !== -1 && argv[i + 1] ? Number(argv[i + 1]) : null;
-};
-
+const entrypoint = tool.popupEntrypoint || `${tool.key}-popup`;
 const dryRun = argv.includes('--dry-run');
-const cols = flag('--cols') || Number((CONFIG.cols || {})[tool.key]) || tool.cols;
 
-function rectOf(paneId) {
-  const layout = h.paneLayout(paneId);
-  const found = layout.panes.find((p) => p.pane_id === paneId);
-  return found ? found.rect : null;
-}
+const args = ['plugin', 'pane', 'open', '--plugin', PLUGIN, '--entrypoint', entrypoint];
+if (argv.includes('--no-focus')) args.push('--no-focus');
 
-function main() {
-  const ctx = resolveContext();
-  if (!ctx.pane) throw new Error('no active pane to split — open a pane first');
-
-  const open = ctx.panes.find((p) => p.tab_id === ctx.pane.tab_id && toolOf(p) === tool.key);
-  if (open) {
-
-    const alone = !ctx.panes.some(
-      (p) => p.tab_id === open.tab_id && p.pane_id !== open.pane_id
-    );
-    if (alone) {
-      if (dryRun) return report({ action: 'focus', tool: tool.key, pane: open.pane_id });
-      h.focusPane(open.pane_id);
-      return report({ action: 'focused', tool: tool.key, pane: open.pane_id });
-    }
-    if (dryRun) return report({ action: 'close', tool: tool.key, pane: open.pane_id });
-    h.paneClose(open.pane_id);
-    return report({ action: 'closed', tool: tool.key, pane: open.pane_id });
+if (dryRun) {
+  process.stdout.write(
+    `${JSON.stringify({ action: 'open', tool: tool.key, entrypoint, command: [h.BIN, ...args] })}\n`
+  );
+} else {
+  const result = h.tryHerdr(args);
+  if (result === null) {
+    process.stderr.write(`could not open the ${tool.label} popup — is a herdr session running?\n`);
+    process.exit(1);
   }
-
-  const rect = rectOf(ctx.pane.pane_id);
-  const width = (rect && rect.width) || 0;
-  const ratio =
-    flag('--ratio') || (width ? Math.min(0.95, Math.max(0.2, (width - cols) / width)) : 0.5);
-
-  const env = { HERDR_ACTIVE_PANE_ID: ctx.pane.pane_id, HERDR_ACTIVE_PANE_CWD: ctx.cwd };
-  const command = ['node', JS_ENTRY, tool.key];
-  if (process.argv.includes('--ascii-icons')) command.push('--ascii-icons');
-
-  if (dryRun) {
-    return report({
-      action: 'open',
-      tool: tool.key,
-      target: ctx.pane.pane_id,
-      targetWidth: width || null,
-      wantCols: cols,
-      ratio: Number(ratio.toFixed(4)),
-      cwd: ctx.cwd,
-
-      command: [...command, '--pane', '<new>'],
-    });
-  }
-
-  const paneId = h.splitRight(ctx.pane.pane_id, ratio, ctx.cwd, env);
-  h.paneRename(paneId, tool.label);
-
-  h.stampToken(paneId, OWNER_TOKEN, TOOL_TOKEN, tool.key, dock.TOKEN_TTL_MS);
-  h.paneRun(paneId, ...command, '--pane', paneId);
-  h.focusPane(paneId);
-  return report({
-    action: 'opened',
-    tool: tool.key,
-    pane: paneId,
-    ratio: Number(ratio.toFixed(4)),
-    cols,
-  });
-}
-
-function report(payload) {
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
-}
-
-try {
-  main();
-} catch (err) {
-  process.stderr.write(`${err.message}\n`);
-  process.exit(1);
+  process.stdout.write(
+    `${JSON.stringify({ action: 'opened', tool: tool.key, entrypoint })}\n`
+  );
 }

@@ -27,36 +27,20 @@ If a binding ever locks you out: `herdr config reset-keys`.
 
 | Key | Does |
 | :--- | :--- |
-| `prefix+a` | open the launcher popup (recommended) |
-| `prefix+shift+a` | toggle the docked sidebar (right edge) |
-| `prefix+z` | focus mode: one work pane, launcher still visible |
-| `prefix+alt+l` | Symlinks, in a pane of its own |
-| `prefix+alt+s` | OpenSpec setup, in a pane of its own |
-| `prefix+alt+p` | Plane tasks, in a pane of its own |
-| `prefix+alt+o` | OpenCode `--auto` |
-| `prefix+alt+g` | Antigravity CLI `--dangerously-skip-permissions` |
-| `prefix+alt+x` | Codex `--dangerously-bypass-approvals-and-sandbox` |
+| `prefix+l` | open the launcher popup (recommended) |
+| `prefix+shift+l` | toggle the docked sidebar (right edge) |
+| `prefix+alt+a` | Antigravity CLI `--dangerously-skip-permissions` |
 | `prefix+alt+c` | Claude `--dangerously-skip-permissions` |
+| `prefix+alt+shift+c` | Codex `--dangerously-bypass-approvals-and-sandbox` |
+| `prefix+alt+o` | OpenCode `--auto` |
+| `prefix+alt+t` | Terminal, interactive pane in the layout |
+| `prefix+alt+l` | Symlinks popup |
+| `prefix+alt+s` | OpenSpec setup popup |
+| `prefix+alt+p` | Plane tasks popup |
 | `prefix+alt+v` | open VS Code here |
 | `prefix+alt+e` | open File Explorer here |
 
-`prefix` is `ctrl+b` unless you changed it. Everything is a prefix binding, so
-nothing can intercept normal typing in a pane.
-
-**`prefix+z` needs herdr's built-in zoom moved out of the way first.** `zoom` in
-the `[keys]` table defaults to `prefix+z`, and a built-in binding **wins over a
-`[[keys.command]]` one for the same chord** — silently: the config reloads with
-no diagnostics, the press zooms as it always did, and `herdr plugin log` shows
-the action was never invoked. `config.example.toml` therefore ships
-
-```toml
-[keys]
-zoom = "prefix+shift+z"
-```
-
-which frees the chord for focus mode and keeps raw zoom one key away. `[keys]`
-has to come **before** the `[[keys.command]]` entries: TOML will not accept a
-table defined after its own sub-table array.
+`prefix` is `ctrl+b` unless you changed it. Everything is a prefix binding with `alt` modifiers for individual launchers, so nothing can intercept normal typing in a pane. Focus mode is toggled directly from the launcher menu.
 
 ## Agent launchers
 
@@ -70,10 +54,11 @@ it is already running and only launches when nothing is there.
 
 | Launcher | kind | flags | verified against |
 | :--- | :--- | :--- | :--- |
-| opencode | `opencode` | `--auto` | `opencode --help` |
 | antigravity | `agy` | `--dangerously-skip-permissions` | `agy --help` |
-| codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `codex --help` |
 | claude | `claude` | `--dangerously-skip-permissions` | `claude --help` |
+| codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` | `codex --help` |
+| opencode | `opencode` | `--auto` | `opencode --help` |
+| terminal | `terminal` | (interactive shell) | Herdr native PTY |
 
 These are the only launchers, by design — there are no prompts-intact variants in
 the menu or the manifest. Run the agent CLI directly if you want approvals back.
@@ -163,10 +148,11 @@ leaving it up would only hide the thing it just started.
 
 ```
  AGENTS · YOLO ────────────────────────
-  opencode
   antigravity
- 󰆍 codex
   claude
+ 󰆍 codex
+  opencode
+  terminal only
 ```
 
 **Why the command in the manifest is a `node -e` bootstrap.** herdr runs a plugin
@@ -227,9 +213,10 @@ coloured arch, `codex.svg` a rounded blob around a `>_` prompt:
 | Antigravity CLI | `fa-mountain` | Android Studio | `md-android_studio` |
 | Codex | `md-console` | VS Code | `dev-vscode` |
 | Claude | `fa-asterisk` | File Explorer | `fa-folder` |
-| Symlinks | `cod-file_symlink_directory` | a link | `cod-link` |
-| OpenSpec | `md-file_document` | a broken link | `md-link_off` |
-| Plane | `cod-checklist` | a Plane issue | `cod-issues` |
+| Terminal | `cod-terminal` | a link | `cod-link` |
+| Symlinks | `cod-file_symlink_directory` | a broken link | `md-link_off` |
+| OpenSpec | `md-file_document` | a Plane issue | `cod-issues` |
+| Plane | `cod-checklist` | | |
 
 Every codepoint in that file was checked twice before it went in, because both
 failure modes are silent from inside the plugin:
@@ -330,9 +317,8 @@ makes click-to-row mapping reliable.
   family reuse the window for a folder they already have open); File Explorer,
   which reuses nothing on its own, gets its existing window for that folder
   activated instead of a duplicate
-* **Workspace** — Symlinks, OpenSpec setup, Plane tasks. Each opens a **pane of
-  its own** beside the pane you are working in, rather than a view inside the
-  sidebar; see below
+* **Workspace** — Symlinks, OpenSpec setup, Plane tasks. Each opens in a
+  **session-modal popup** taking zero columns from your layout; see below
 
 If an app is detected at the wrong path, override it in `apps.json` in the plugin
 config dir (`herdr plugin config-dir herdr-launcher`) — the equivalent of
@@ -344,19 +330,21 @@ CodingSpace's settings fields:
 
 ## Focus mode
 
-`prefix+z`, where you would otherwise bind `pane zoom`: one work pane fills the
-tab and the launcher is still there. Press it again and the layout comes back
-exactly as it was.
+`prefix+z`: maximizes the active work or agent pane (~90% width) while keeping the launcher sidebar visible on the right. Press it again to return to the balanced Fibonacci layout.
 
 ```
-  before                     focus mode
-  +------+------+------+     +---------------+------+
-  | work | a    |  SB  |     |     work      |  SB  |
-  +------+------+      | ->  |               |      |
-  | x    | b    |      |     |               |      |
-  +------+------+------+     +---------------+------+
-                              a, b, x -> "launcher stash" tab
+  Fibonacci layout (OFF)      Focus Mode (ON)
+  +------+------+------+      +---------------+------+
+  | work | a    |  SB  |      |     work      |  SB  |
+  +------+------+      | ->   |  (a,b,x shrunk|      |
+  | x    | b    |      |      |   to slivers) |      |
+  +------+------+------+      +---------------+------+
+                               (no extra stash tabs)
 ```
+
+* **Focus Mode ON**: The active pane expands to fill ~90% of the non-sidebar area next to the 36-column docked sidebar. If you launch a new agent while in Focus Mode, the new agent immediately becomes the dominant ~90% active pane.
+* **Focus Mode OFF**: Restores all split ratios back to the balanced Fibonacci layout.
+* **Status in Menu**: The launcher menu displays `Focus mode on` or `Focus mode off` dynamically.
 
 **Why it cannot just zoom.** herdr's zoom is decided *above* the split tree:
 while `Tab.zoomed` is set the layout engine ignores the tree and returns one
@@ -471,50 +459,20 @@ workspace/worktree/tab/pane set, and `on = "app.startup"` links with an
 `unknown event` warning and never fires. The entry uses the same `node -e`
 bootstrap as the popup pane, for the same extended-path reason.
 
-## Workspace tool panes
+## Workspace tool popups
 
-Symlinks, OpenSpec and Plane each open in a **pane of their own**:
+Symlinks, OpenSpec and Plane each open in a **session-modal popup**:
 
 ```
-node bin/tool-launch.js <symlinks|openspec|plane> [--cols N] [--ratio N] [--dry-run]
+node bin/tool-launch.js <symlinks|openspec|plane> [--dry-run]
 ```
 
-They used to run inside the sidebar as a view stack, and 36 columns is not a
-width at which any of the three is readable: a symlink's target path, an
-OpenSpec component's state and a Plane issue's title-next-to-its-state all
-ellipsised down to nothing. A pane asks for the width the content needs — 52,
-44 and 64 columns — and costs the layout nothing while it is closed. Override
-with `--cols`, or per tool in `tools.json` in the plugin config dir:
+They open as popups with exact cell dimensions (52, 44, and 64 columns wide at 70% height),
+taking nothing from the layout while closed and leaving existing split trees untouched.
 
-```json
-{ "cols": { "plane": 72 } }
-```
-
-Three things about the pane are worth knowing:
-
-* **It is split off the pane you are working in, never off the sidebar.**
-  `resolveContext()` refuses to hand back a plugin-owned pane, so the tool lands
-  beside the work and the sidebar keeps its columns. The ratio arithmetic is
-  `dock.open()`'s, clamp included — a narrow work pane yields less than asked.
-* **The row is a toggle: a second press closes the pane it opened.** Not a
-  second instance, and not a re-focus — the press that took the columns gives
-  them back. This is the opposite of the agent launchers, where another instance
-  is the point: there is one worktree to link and one issue list to read. The
-  pane carries a `herdr-launcher-tool` token whose value is the tool key, which
-  is what `tool-launch.js` looks for — so pressing Plane closes the Plane pane
-  and not the Symlinks one beside it. It is a **different token name** from the
-  sidebar's `herdr-launcher`, because `isOurs()` is what `toggle-launcher.js`
-  reads and a tool pane answering to it would be the pane `prefix+shift+a`
-  closes. One exception, and it is `lib/app.js`'s `quit()` rule: a tool pane
-  alone in its tab is focused rather than closed, since closing the last pane
-  closes the tab.
-* **It resolves its worktree from the pane it was opened from**, passed in as
-  `HERDR_ACTIVE_PANE_ID` / `HERDR_ACTIVE_PANE_CWD` at split time, so the answer
-  does not drift if you `cd` inside the tool pane afterwards.
-
-`q` and `esc` both close the pane — the tool is finished with, and lib/app.js's
-quit() rules apply: the close is fired detached, and a pane alone in its tab only
-exits.
+* **Popups are session-modal singletons with no pane id.** `esc` or `q` dismisses the popup.
+* **Context is preserved.** The popup resolves its repository worktree and cwd from the active pane context.
+* **Zero layout footprint.** No split resizing, no ratios to manage, and no orphaned panes.
 
 ### Symlinks
 
@@ -569,7 +527,7 @@ node bin/popup-launcher.js [--no-focus] [--dry-run]
 node bin/toggle-launcher.js [--cols 36] [--open|--close] [--no-watch] [--dry-run]
 node bin/watch-tabs.js [--start|--stop|--status|--once] [--cols 36]
 node bin/agent-launch.js <agent-key> [--tab] [--ratio 0.5] [--direction right|down] [--dry-run]
-node bin/tool-launch.js <tool-key> [--cols N] [--ratio N] [--dry-run]
+node bin/tool-launch.js <tool-key> [--no-focus] [--dry-run]
 node bin/app-open.js <app-key> [path] [--no-focus] [--dry-run]
 node bin/focus-mode.js [--enter|--exit] [--dry-run]
 node bin/startup.js [--no-watch] [--timeout 15000] [--dry-run]

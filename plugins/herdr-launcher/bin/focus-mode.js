@@ -1,49 +1,39 @@
 #!/usr/bin/env node
 'use strict';
 
-const h = require('../lib/herdr');
 const stash = require('../lib/stash');
-const { resolveContext, isOurs } = require('../lib/context');
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
-const forceEnter = argv.includes('--enter');
-const forceExit = argv.includes('--exit');
+const forceEnter = argv.includes('--enter') || argv.includes('--on');
+const forceExit = argv.includes('--exit') || argv.includes('--off');
 
 const report = (payload) => process.stdout.write(`${JSON.stringify(payload)}\n`);
 
-function zoomToggle(paneId, reason) {
-  if (dryRun) return report({ action: 'zoom-toggle', pane: paneId, reason });
-  const result = h.tryHerdr(['pane', 'zoom', paneId, '--toggle']);
-  const zoomed = result && result.zoom ? result.zoom.zoomed : null;
-  return report({ action: 'zoom-toggled', pane: paneId, zoomed, reason });
-}
-
 function main() {
-  const ctx = resolveContext();
-  if (!ctx.pane) throw new Error('no active pane — is a herdr session running?');
+  const currentOn = stash.isFocusModeOn();
 
-  const tabId = ctx.pane.tab_id;
-  const entry = stash.entryFor(tabId);
+  let targetOn;
+  if (forceEnter) targetOn = true;
+  else if (forceExit) targetOn = false;
+  else targetOn = !currentOn;
 
-  if (entry && !forceEnter) {
-    return report(stash.exit(entry, { dryRun }));
+  if (dryRun) {
+    return report({
+      action: targetOn ? 'enter' : 'exit',
+      focusMode: targetOn,
+    });
   }
-  if (forceExit) return report({ action: 'noop', reason: 'not in focus mode', tab: tabId });
 
-  const sidebar = ctx.panes.find((p) => p.tab_id === tabId && isOurs(p));
-  if (!sidebar) return zoomToggle(ctx.pane.pane_id, 'no launcher docked in this tab');
-
-  const result = stash.enter({
-    workPane: ctx.pane.pane_id,
-    sidebarPane: sidebar.pane_id,
-    tabId,
-    workspaceId: ctx.pane.workspace_id,
-    dryRun,
+  stash.setFocusMode(targetOn);
+  return report({
+    action: targetOn ? 'entered' : 'exited',
+    focusMode: targetOn,
+    mode: targetOn ? 'focus' : 'fibonacci',
+    description: targetOn
+      ? 'Global Focus Mode ON: new agents will open in a new tab everywhere'
+      : 'Global Focus Mode OFF: new agents will open in-tab in Fibonacci spiral everywhere',
   });
-
-  if (result.action === 'refused') return zoomToggle(ctx.pane.pane_id, result.reason);
-  return report(result);
 }
 
 try {

@@ -7,6 +7,7 @@ const TABLE = {
   'agent-agy': ['\u{EF08}', 'ag', 'fa-mountain', '#3186FF'],
   'agent-codex': ['\u{F018D}', 'cx', 'md-console', '#FFFFFF'],
   'agent-claude': ['\u{F069}', 'cl', 'fa-asterisk', '#D97757'],
+  'agent-terminal': ['\u{EA85}', 'tm', 'cod-terminal', '#41A6B5'],
 
   'app-antigravity': ['\u{F0C8B}', 'AG', 'md-application_brackets', '#FBBC04'],
   'app-android-studio': ['\u{F0034}', 'AS', 'md-android_studio', '#3DDC84'],

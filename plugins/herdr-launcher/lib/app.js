@@ -120,7 +120,7 @@ class App {
 
     const focused = index === this.view.list.selected;
     const item = this.view.list.selectIndex(index);
-    if (focused) this.activate(item);
+    if (focused || (item && item.singleClick)) this.activate(item);
     return this.render();
   }
 
@@ -212,6 +212,15 @@ class App {
     this.screen.start();
     this.screen.onResize(() => this.render());
     this.setView(this.options.view());
+
+    this._liveTimer = setInterval(() => {
+      if (!this.running || this.pending) return;
+      this.refreshContext();
+      if (this.view && this.view.refresh) this.view.refresh(this);
+      this.render();
+    }, 500);
+    this._liveTimer.unref();
+
     process.stdin.on('data', (chunk) => {
 
       for (const event of parseKeys(chunk)) {

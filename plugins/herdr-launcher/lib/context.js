@@ -33,6 +33,18 @@ function resolveContext() {
   const activeId = process.env.HERDR_ACTIVE_PANE_ID;
   if (activeId) pane = panes.find((p) => p.pane_id === activeId) || null;
 
+  const tabs = h.tabList();
+  const activeTab = tabs.find((t) => t.focused) || (self ? tabs.find((t) => t.tab_id === self.tab_id) : null) || tabs[0];
+
+  if (!pane && activeTab) {
+    const inActive = panes.filter((p) => p.tab_id === activeTab.tab_id);
+    pane = inActive.find((p) => p.focused && !isOurs(p) && !toolOf(p)) ||
+      inActive.find((p) => !isOurs(p) && !toolOf(p)) ||
+      inActive.find((p) => p.focused) ||
+      inActive[0] ||
+      null;
+  }
+
   if (!pane && self && isOurs(self)) {
     const sameTab = panes.filter((p) => p.tab_id === self.tab_id && !isOurs(p));
     pane = sameTab.find((p) => p.focused) || sameTab[0] || null;

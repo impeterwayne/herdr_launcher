@@ -9,10 +9,33 @@ platforms = ["linux", "macos", "windows"]
 id = "launcher-popup"
 title = "Launcher"
 placement = "popup"
-
 width = 46
 height = "70%"
-command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv.push("--popup");require(r+"/bin/launcher.js")']
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/launcher.js","--popup"];require(r+"/bin/launcher.js")']
+
+[[panes]]
+id = "symlinks-popup"
+title = "Symlinks"
+placement = "popup"
+width = 52
+height = "70%"
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","symlinks","--popup"];require(r+"/bin/tool-pane.js")']
+
+[[panes]]
+id = "openspec-popup"
+title = "OpenSpec setup"
+placement = "popup"
+width = 44
+height = "70%"
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","openspec","--popup"];require(r+"/bin/tool-pane.js")']
+
+[[panes]]
+id = "plane-popup"
+title = "Plane tasks"
+placement = "popup"
+width = 64
+height = "70%"
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","plane","--popup"];require(r+"/bin/tool-pane.js")']
 
 [[startup]]
 command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;require(r+"/bin/startup.js")']
@@ -56,26 +79,20 @@ command = ["node", "bin/focus-mode.js"]
 [[actions]]
 id = "tool-symlinks"
 title = "Symlinks"
-description = "Toggle the symlink manager for this worktree in its own pane."
+description = "Open the symlink manager for this worktree as a popup."
 command = ["node", "bin/tool-launch.js", "symlinks"]
 
 [[actions]]
 id = "tool-openspec"
 title = "OpenSpec setup"
-description = "Toggle the OpenSpec toolkit deployer for this worktree in its own pane."
+description = "Open the OpenSpec toolkit deployer for this worktree as a popup."
 command = ["node", "bin/tool-launch.js", "openspec"]
 
 [[actions]]
 id = "tool-plane"
 title = "Plane tasks"
-description = "Toggle the Plane issue list in its own pane."
+description = "Open the Plane issue list as a popup."
 command = ["node", "bin/tool-launch.js", "plane"]
-
-[[actions]]
-id = "agent-opencode-auto"
-title = "OpenCode (auto)"
-description = "OpenCode with --auto: auto-approves everything not explicitly denied."
-command = ["node", "bin/agent-launch.js", "opencode-auto"]
 
 [[actions]]
 id = "agent-agy-yolo"
@@ -84,16 +101,28 @@ description = "Antigravity CLI with --dangerously-skip-permissions."
 command = ["node", "bin/agent-launch.js", "agy-yolo"]
 
 [[actions]]
+id = "agent-claude-danger"
+title = "Claude (skip permissions)"
+description = "Claude Code with --dangerously-skip-permissions."
+command = ["node", "bin/agent-launch.js", "claude-danger"]
+
+[[actions]]
 id = "agent-codex-yolo"
 title = "Codex (YOLO)"
 description = "Codex with --dangerously-bypass-approvals-and-sandbox. Isolated environments only."
 command = ["node", "bin/agent-launch.js", "codex-yolo"]
 
 [[actions]]
-id = "agent-claude-danger"
-title = "Claude (skip permissions)"
-description = "Claude Code with --dangerously-skip-permissions."
-command = ["node", "bin/agent-launch.js", "claude-danger"]
+id = "agent-opencode-auto"
+title = "OpenCode (auto)"
+description = "OpenCode with --auto: auto-approves everything not explicitly denied."
+command = ["node", "bin/agent-launch.js", "opencode-auto"]
+
+[[actions]]
+id = "agent-terminal"
+title = "Terminal (only)"
+description = "Open an interactive terminal pane only (no agent)."
+command = ["node", "bin/agent-launch.js", "terminal"]
 
 [[actions]]
 id = "open-antigravity"

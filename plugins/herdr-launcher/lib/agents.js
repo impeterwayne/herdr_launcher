@@ -5,15 +5,6 @@ const { OWNER_TOKEN, isOurs, toolOf } = require('./context');
 
 const AGENTS = [
   {
-    key: 'opencode-auto',
-    iconKey: 'agent-opencode',
-    label: 'opencode',
-    kind: 'opencode',
-    args: ['--auto'],
-    danger: true,
-    title: 'OpenCode with --auto: auto-approves everything not explicitly denied.',
-  },
-  {
     key: 'agy-yolo',
     iconKey: 'agent-agy',
     label: 'antigravity',
@@ -21,6 +12,15 @@ const AGENTS = [
     args: ['--dangerously-skip-permissions'],
     danger: true,
     title: 'Antigravity CLI with --dangerously-skip-permissions.',
+  },
+  {
+    key: 'claude-danger',
+    iconKey: 'agent-claude',
+    label: 'claude',
+    kind: 'claude',
+    args: ['--dangerously-skip-permissions'],
+    danger: true,
+    title: 'Claude Code with --dangerously-skip-permissions.',
   },
   {
     key: 'codex-yolo',
@@ -32,13 +32,23 @@ const AGENTS = [
     title: 'Codex without approvals or sandboxing. Isolated environments only.',
   },
   {
-    key: 'claude-danger',
-    iconKey: 'agent-claude',
-    label: 'claude',
-    kind: 'claude',
-    args: ['--dangerously-skip-permissions'],
+    key: 'opencode-auto',
+    iconKey: 'agent-opencode',
+    label: 'opencode',
+    kind: 'opencode',
+    args: ['--auto'],
     danger: true,
-    title: 'Claude Code with --dangerously-skip-permissions.',
+    title: 'OpenCode with --auto: auto-approves everything not explicitly denied.',
+  },
+  {
+    key: 'terminal',
+    iconKey: 'agent-terminal',
+    label: 'terminal',
+    menuLabel: 'terminal only',
+    kind: 'terminal',
+    args: [],
+    danger: false,
+    title: 'Open interactive terminal only (no agent).',
   },
 ];
 
@@ -162,5 +172,12 @@ function resolveFibonacciTarget({ ctx, tabPanes = [], agentList = [], explicitDi
   };
 }
 
-module.exports = { AGENTS, byKey, isAgentPane, resolveFibonacciTarget };
+module.exports = {
+  AGENTS,
+  byKey,
+  isAgentPane,
+  resolveFibonacciTarget,
+  enrichWithLayout,
+  sortLeftToRight,
+};
 

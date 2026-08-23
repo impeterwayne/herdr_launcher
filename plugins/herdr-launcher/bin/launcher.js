@@ -10,6 +10,7 @@ const { App, selfPaneId, requireTTY } = require('../lib/app');
 const { AGENTS } = require('../lib/agents');
 const { APPS, resolveApp, openApp } = require('../lib/apps');
 const { configDir, OWNER_TOKEN, toolOf } = require('../lib/context');
+const h = require('../lib/herdr');
 const stash = require('../lib/stash');
 const { TOOLS } = require('../lib/views');
 const { icon, sgr } = require('../lib/icons');
@@ -25,7 +26,7 @@ const DEFAULT_ACTIONS = [
 
 const argv = process.argv.slice(2);
 
-const POPUP = argv.includes('--popup');
+const POPUP = process.argv.includes('--popup');
 const POPUP_ACTIONS = [
   { key: 'enter', label: 'run' },
   { key: 'r', label: 'reload' },
@@ -58,20 +59,20 @@ function paneEnv(app) {
   return env;
 }
 
-function menuView() {
+function buildMenuItems(app) {
   const items = [];
 
   items.push({ type: 'group', label: 'AGENTS · YOLO' });
   for (const agent of AGENTS) {
     items.push({
       type: 'item',
-      label: agent.label,
+      label: agent.menuLabel || agent.label,
       icon: icon(agent.iconKey),
       iconColor: sgr(agent.iconKey),
       closeAfter: true,
-      run: (app) => {
-        runHelper('agent-launch.js', [agent.key], paneEnv(app));
-        app.setStatus(`launching ${agent.label}…`, 'ok');
+      run: (a) => {
+        runHelper('agent-launch.js', [agent.key], paneEnv(a));
+        a.setStatus(`launching ${agent.menuLabel || agent.label}…`, 'ok');
       },
     });
   }
@@ -102,27 +103,22 @@ function menuView() {
   items.push({ type: 'blank' });
   items.push({ type: 'group', label: 'WORKSPACE' });
 
-  const inFocusMode = () => {
-    try {
-      const ctx = require('../lib/context').resolveContext();
-      return Boolean(ctx.pane && stash.entryFor(ctx.pane.tab_id));
-    } catch (_) {
-      return false;
-    }
-  };
+  const inFocusMode = () => stash.isFocusModeOn();
   const focused = inFocusMode();
   items.push({
     type: 'item',
     label: 'Focus mode',
     icon: icon('focus-mode'),
     iconColor: sgr('focus-mode'),
-    closeAfter: true,
-    hint: focused ? 'on' : '',
+    closeAfter: false,
+    singleClick: true,
+    hint: focused ? 'on' : 'off',
     run: (a) => {
-      a.refreshContext();
-      const on = a.ctx.pane ? Boolean(stash.entryFor(a.ctx.pane.tab_id)) : false;
-      runHelper('focus-mode.js', [], paneEnv(a));
-      a.setStatus(on ? 'restoring the layout…' : 'focusing the work pane…', 'ok');
+      stash.toggle();
+      const nowOn = stash.isFocusModeOn();
+      a.setStatus(nowOn ? 'Focus mode: ON (new agents open in new tab)' : 'Focus mode: OFF (in-tab Fibonacci)', 'ok');
+      if (a.view && a.view.refresh) a.view.refresh(a);
+      a.render();
     },
   });
 
@@ -134,25 +130,27 @@ function menuView() {
       iconColor: sgr(tool.iconKey),
       closeAfter: true,
       run: (a) => {
-
-        a.refreshContext();
-        const tabId = a.ctx.pane && a.ctx.pane.tab_id;
-        const open = (a.ctx.panes || []).find(
-          (p) => p.tab_id === tabId && toolOf(p) === tool.key
-        );
         runHelper('tool-launch.js', [tool.key], paneEnv(a));
-        a.setStatus(`${open ? 'closing' : 'opening'} ${tool.label} pane…`, 'ok');
+        a.setStatus(`opening ${tool.label} popup…`, 'ok');
       },
     });
   }
 
-  return {
+  return items;
+}
+
+function menuView() {
+  const view = {
     title: 'Launcher',
-    list: new List(items),
+    list: new List([]),
+    refresh(app) {
+      this.list.setItems(buildMenuItems(app));
+    },
     render(height, width) {
       return this.list.render(height, width);
     },
   };
+  return view;
 }
 
 requireTTY('launcher.js');

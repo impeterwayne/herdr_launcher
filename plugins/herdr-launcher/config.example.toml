@@ -1,55 +1,50 @@
-# herdr's BUILT-IN zoom owns prefix+z, and a built-in binding beats a
-# [[keys.command]] one for the same chord: leave this out and prefix+z keeps
-# zooming (hiding the launcher) while the focus-mode action below never runs.
-# Moving it frees the chord and keeps raw zoom one key away.
-#
-# [keys] must come BEFORE the [[keys.command]] entries — TOML will not accept a
-# table defined after its own sub-table array.
-
-[keys]
-zoom = "prefix+shift+z"
-
 [[keys.command]]
-key = "prefix+a"
+key = "prefix+l"
 type = "plugin_action"
 command = "herdr-launcher.launcher-popup-open"
 description = "launcher popup"
 
 [[keys.command]]
-key = "prefix+shift+a"
+key = "prefix+shift+l"
 type = "plugin_action"
 command = "herdr-launcher.toggle-launcher"
 description = "launcher sidebar"
 
 [[keys.command]]
-key = "prefix+alt+a"
-type = "plugin_action"
-command = "herdr-launcher.watch-tabs-start"
-description = "auto-dock launcher in new tabs"
-
-[[keys.command]]
-key = "prefix+z"
-type = "plugin_action"
-command = "herdr-launcher.focus-mode"
-description = "focus mode (zoom, launcher visible)"
-
-[[keys.command]]
 key = "prefix+alt+l"
 type = "plugin_action"
 command = "herdr-launcher.tool-symlinks"
-description = "symlinks"
+description = "symlinks (popup)"
 
 [[keys.command]]
 key = "prefix+alt+s"
 type = "plugin_action"
 command = "herdr-launcher.tool-openspec"
-description = "OpenSpec setup"
+description = "OpenSpec setup (popup)"
 
 [[keys.command]]
 key = "prefix+alt+p"
 type = "plugin_action"
 command = "herdr-launcher.tool-plane"
-description = "Plane tasks"
+description = "Plane tasks (popup)"
+
+[[keys.command]]
+key = "prefix+alt+a"
+type = "plugin_action"
+command = "herdr-launcher.agent-agy-yolo"
+description = "Antigravity CLI (YOLO)"
+
+[[keys.command]]
+key = "prefix+alt+c"
+type = "plugin_action"
+command = "herdr-launcher.agent-claude-danger"
+description = "Claude (skip permissions)"
+
+[[keys.command]]
+key = "prefix+alt+shift+c"
+type = "plugin_action"
+command = "herdr-launcher.agent-codex-yolo"
+description = "Codex (YOLO)"
 
 [[keys.command]]
 key = "prefix+alt+o"
@@ -58,22 +53,10 @@ command = "herdr-launcher.agent-opencode-auto"
 description = "OpenCode (auto)"
 
 [[keys.command]]
-key = "prefix+alt+g"
+key = "prefix+alt+t"
 type = "plugin_action"
-command = "herdr-launcher.agent-agy-yolo"
-description = "Antigravity CLI (YOLO)"
-
-[[keys.command]]
-key = "prefix+alt+x"
-type = "plugin_action"
-command = "herdr-launcher.agent-codex-yolo"
-description = "Codex (YOLO)"
-
-[[keys.command]]
-key = "prefix+alt+c"
-type = "plugin_action"
-command = "herdr-launcher.agent-claude-danger"
-description = "Claude (skip permissions)"
+command = "herdr-launcher.agent-terminal"
+description = "Terminal"
 
 [[keys.command]]
 key = "prefix+alt+v"
