@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const h = require('./herdr');
 const { isOurs, toolOf } = require('./context');
@@ -89,8 +89,13 @@ function applyFocusMode({ tabId, focusedPaneId = null, focusModeOn = false }) {
   };
 }
 
+const applyStackMode = applyFocusMode;
+const isStackModeOn = isFocusModeOn;
+
 module.exports = {
+  isStackModeOn,
   isFocusModeOn,
   resetFibonacciSplits,
+  applyStackMode,
   applyFocusMode,
 };

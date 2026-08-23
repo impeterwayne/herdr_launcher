@@ -71,6 +71,12 @@ description = "One pass over the open tabs: any tab without a launcher gets one.
 command = ["node", "bin/watch-tabs.js", "--once"]
 
 [[actions]]
+id = "stack-mode"
+title = "Stack mode (zoom, launcher visible)"
+description = "One work pane fills the tab with the launcher still docked; press again to put the layout back."
+command = ["node", "bin/stack-mode.js"]
+
+[[actions]]
 id = "focus-mode"
 title = "Focus mode (zoom, launcher visible)"
 description = "One work pane fills the tab with the launcher still docked; press again to put the layout back."

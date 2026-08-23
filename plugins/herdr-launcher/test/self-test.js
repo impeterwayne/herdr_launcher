@@ -132,6 +132,8 @@ function testManifest() {
   assert(paneIds.get('plane-popup')?.width === 64, 'plane-popup has width = 64');
 
   const actionIds = new Set(actions.map((a) => a.id));
+  assert(actionIds.has('stack-mode'), 'action stack-mode defined');
+  assert(actionIds.has('focus-mode'), 'action focus-mode defined');
   assert(actionIds.has('tool-symlinks'), 'action tool-symlinks defined');
   assert(actionIds.has('tool-openspec'), 'action tool-openspec defined');
   assert(actionIds.has('tool-plane'), 'action tool-plane defined');
@@ -190,7 +192,7 @@ function testAgentLaunchersDryRun() {
 }
 
 function testAppLaunchersDryRun() {
-  group('5. App Launchers & Focus Mode (Dry Run)');
+  group('5. App Launchers & Stack Mode (Dry Run)');
   const appOpenJs = path.join(BIN_DIR, 'app-open.js');
 
   for (const appKey of ['vscode', 'explorer', 'antigravity', 'android-studio']) {
@@ -198,9 +200,20 @@ function testAppLaunchersDryRun() {
     assert(res.app === appKey && Boolean(res.cwd), `app-open ${appKey} dry-run resolves successfully`);
   }
 
+  const stackModeJs = path.join(BIN_DIR, 'stack-mode.js');
+  const stackRes = runJson(stackModeJs, ['--dry-run']);
+  assert(stackRes.action === 'enter' || stackRes.action === 'exit', 'stack-mode toggle dry-run works');
+  assert(typeof stackRes.stackMode === 'boolean', 'stack-mode reports boolean stackMode');
+
   const focusModeJs = path.join(BIN_DIR, 'focus-mode.js');
   const focusRes = runJson(focusModeJs, ['--dry-run']);
-  assert(focusRes.action === 'enter' || focusRes.action === 'exit', 'focus-mode toggle dry-run works');
+  assert(focusRes.action === 'enter' || focusRes.action === 'exit', 'focus-mode toggle dry-run works (compat)');
+
+  const stash = require('../lib/stash');
+  assert(typeof stash.isStackModeOn === 'function', 'stash.isStackModeOn is exported');
+  assert(typeof stash.setStackMode === 'function', 'stash.setStackMode is exported');
+  assert(typeof stash.isFocusModeOn === 'function', 'stash.isFocusModeOn is exported');
+  assert(typeof stash.setFocusMode === 'function', 'stash.setFocusMode is exported');
 }
 
 function testViewComponents() {

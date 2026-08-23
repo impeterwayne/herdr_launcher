@@ -14,7 +14,8 @@ const TABLE = {
   'app-vscode': ['\u{E8DA}', 'VS', 'dev-vscode', '#0098FF'],
   'app-explorer': ['\u{F07B}', 'EX', 'fa-folder', '#FFD65C'],
 
-  'focus-mode': ['\u{EB69}', 'FS', 'cod-screen_full', '#7DCFFF'],
+  'stack-mode': ['\u{EB69}', 'SM', 'cod-screen_full', '#7DCFFF'],
+  'focus-mode': ['\u{EB69}', 'SM', 'cod-screen_full', '#7DCFFF'],
 
   symlinks: ['\u{EAED}', 'LN', 'cod-file_symlink_directory', '#7AA2F7'],
   openspec: ['\u{F0219}', 'SP', 'md-file_document', '#9ECE6A'],

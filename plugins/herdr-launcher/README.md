@@ -40,7 +40,7 @@ If a binding ever locks you out: `herdr config reset-keys`.
 | `prefix+alt+v` | open VS Code here |
 | `prefix+alt+e` | open File Explorer here |
 
-`prefix` is `ctrl+b` unless you changed it. Everything is a prefix binding with `alt` modifiers for individual launchers, so nothing can intercept normal typing in a pane. Focus mode is toggled directly from the launcher menu.
+`prefix` is `ctrl+b` unless you changed it. Everything is a prefix binding with `alt` modifiers for individual launchers, so nothing can intercept normal typing in a pane. Stack mode is toggled directly from the launcher menu.
 
 ## Agent launchers
 
@@ -328,12 +328,12 @@ CodingSpace's settings fields:
 { "android-studio": "C:\\Program Files\\Android\\Android Studio1\\bin\\studio64.exe" }
 ```
 
-## Focus mode
+## Stack mode
 
 `prefix+z`: maximizes the active work or agent pane (~90% width) while keeping the launcher sidebar visible on the right. Press it again to return to the balanced Fibonacci layout.
 
 ```
-  Fibonacci layout (OFF)      Focus Mode (ON)
+  Fibonacci layout (OFF)      Stack Mode (ON)
   +------+------+------+      +---------------+------+
   | work | a    |  SB  |      |     work      |  SB  |
   +------+------+      | ->   |  (a,b,x shrunk|      |
@@ -342,9 +342,9 @@ CodingSpace's settings fields:
                                (no extra stash tabs)
 ```
 
-* **Focus Mode ON**: The active pane expands to fill ~90% of the non-sidebar area next to the 36-column docked sidebar. If you launch a new agent while in Focus Mode, the new agent immediately becomes the dominant ~90% active pane.
-* **Focus Mode OFF**: Restores all split ratios back to the balanced Fibonacci layout.
-* **Status in Menu**: The launcher menu displays `Focus mode on` or `Focus mode off` dynamically.
+* **Stack Mode ON**: The active pane expands to fill ~90% of the non-sidebar area next to the 36-column docked sidebar. If you launch a new agent while in Stack Mode, the new agent immediately becomes the dominant ~90% active pane.
+* **Stack Mode OFF**: Restores all split ratios back to the balanced Fibonacci layout.
+* **Status in Menu**: The launcher menu displays `Stack mode on` or `Stack mode off` dynamically.
 
 **Why it cannot just zoom.** herdr's zoom is decided *above* the split tree:
 while `Tab.zoomed` is set the layout engine ignores the tree and returns one

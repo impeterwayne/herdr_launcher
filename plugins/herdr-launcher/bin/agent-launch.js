@@ -128,8 +128,8 @@ function main() {
     ? { exe: null, native: true, shim: null, env: {} }
     : resolveLaunch(agent.kind, path.join(configDir(), 'shims'));
 
-  const inFocus = stash.isFocusModeOn();
-  const shouldOpenInTab = useTab || inFocus;
+  const inStack = stash.isStackModeOn ? stash.isStackModeOn() : stash.isFocusModeOn();
+  const shouldOpenInTab = useTab || inStack;
 
   const tabPanes = (ctx.panes || []).filter((p) => p.tab_id === ctx.tabId);
   const targetInfo = shouldOpenInTab
@@ -157,7 +157,8 @@ function main() {
     target: shouldOpenInTab ? null : (targetInfo.targetPane ? targetInfo.targetPane.pane_id : null),
     ratio: shouldOpenInTab ? null : targetInfo.ratio,
     alreadyRunning: Boolean(running),
-    focusMode: inFocus,
+    stackMode: inStack,
+    focusMode: inStack,
   };
 
   if (dryRun) {

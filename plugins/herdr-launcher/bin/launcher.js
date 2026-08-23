@@ -103,20 +103,19 @@ function buildMenuItems(app) {
   items.push({ type: 'blank' });
   items.push({ type: 'group', label: 'WORKSPACE' });
 
-  const inFocusMode = () => stash.isFocusModeOn();
-  const focused = inFocusMode();
+  const inStackMode = () => (stash.isStackModeOn ? stash.isStackModeOn() : stash.isFocusModeOn());
+  const stacked = inStackMode();
   items.push({
     type: 'item',
-    label: 'Focus mode',
-    icon: icon('focus-mode'),
-    iconColor: sgr('focus-mode'),
+    label: 'Stack mode',
+    icon: icon('stack-mode'),
+    iconColor: sgr('stack-mode'),
     closeAfter: false,
-    singleClick: true,
-    hint: focused ? 'on' : 'off',
+    hint: stacked ? 'on' : 'off',
     run: (a) => {
       stash.toggle();
-      const nowOn = stash.isFocusModeOn();
-      a.setStatus(nowOn ? 'Focus mode: ON (new agents open in new tab)' : 'Focus mode: OFF (in-tab Fibonacci)', 'ok');
+      const nowOn = stash.isStackModeOn ? stash.isStackModeOn() : stash.isFocusModeOn();
+      a.setStatus(nowOn ? 'Stack mode: ON (new agents open in new tab)' : 'Stack mode: OFF (in-tab Fibonacci)', 'ok');
       if (a.view && a.view.refresh) a.view.refresh(a);
       a.render();
     },

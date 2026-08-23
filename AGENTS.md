@@ -24,7 +24,7 @@ Instructions and guidelines for AI coding agents implementing features and maint
 - Ensure popup views support clean dismissal on both `esc` and `q` (`actions` footer should include `[esc close]`).
 
 ### Rule 3: Support `--dry-run` on All CLI Entrypoints
-- Every command script under `plugins/herdr-launcher/bin/` (`tool-launch.js`, `agent-launch.js`, `app-open.js`, `popup-launcher.js`, `focus-mode.js`, `startup.js`, etc.) **MUST** support the `--dry-run` flag.
+- Every command script under `plugins/herdr-launcher/bin/` (`tool-launch.js`, `agent-launch.js`, `app-open.js`, `popup-launcher.js`, `stack-mode.js`, `focus-mode.js`, `startup.js`, etc.) **MUST** support the `--dry-run` flag.
 - `--dry-run` output must be machine-readable JSON printed to `stdout` containing the resolved action and command parameters without modifying session state.
 
 ### Rule 4: Zero External npm Dependencies
