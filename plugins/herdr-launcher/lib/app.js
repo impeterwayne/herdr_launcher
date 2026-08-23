@@ -166,7 +166,7 @@ class App {
         return this.render();
       case 'r':
         this.refreshContext();
-        if (this.view.refresh) this.view.refresh(this);
+        if (this.view.refresh) this.view.refresh(this, { force: true });
         this.setStatus('reloaded');
         return this.render();
       case 'enter': {
@@ -213,13 +213,21 @@ class App {
     this.screen.onResize(() => this.render());
     this.setView(this.options.view());
 
-    this._liveTimer = setInterval(() => {
-      if (!this.running || this.pending) return;
-      this.refreshContext();
-      if (this.view && this.view.refresh) this.view.refresh(this);
-      this.render();
-    }, 500);
-    this._liveTimer.unref();
+    if (!this.popup) {
+      this._liveTimer = setInterval(() => {
+        if (!this.running || this.pending) return;
+        const prevCwd = this.ctx ? this.ctx.cwd : null;
+        this.refreshContext();
+        const cwdChanged = Boolean(this.ctx && this.ctx.cwd !== prevCwd);
+        if (cwdChanged) {
+          if (this.view && this.view.refresh) {
+            this.view.refresh(this, { force: true });
+          }
+          this.render();
+        }
+      }, 1000);
+      this._liveTimer.unref();
+    }
 
     process.stdin.on('data', (chunk) => {
 
