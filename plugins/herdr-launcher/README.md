@@ -503,15 +503,20 @@ Source defaults to `D:\Quest\CodingSpace\toolkits\OpenSpec`. Override it with
 
 ### Plane
 
-Read-only issue list, opening in the browser on Enter. Needs `plane.json` in the
-config dir — the API key never lives in this repo:
+Read-only issue list, opening in the browser on Enter. Defaults to CodingSpace's
+configuration (`baseUrl: "https://plane.itgproduct.com"`, `workspaceSlug: "product"`,
+and default API key) and can inherit `projectPlaneIds` from CodingSpace. Override
+or configure per-project mapping in `plane.json`:
 
 ```json
 {
-  "baseUrl": "https://app.plane.so",
-  "workspaceSlug": "your-workspace",
+  "baseUrl": "https://plane.itgproduct.com",
+  "workspaceSlug": "product",
   "projectId": "uuid",
-  "apiKey": "plane_api_..."
+  "apiKey": "plane_api_...",
+  "projectPlaneIds": {
+    "D:/path/to/worktree": "uuid"
+  }
 }
 ```
 
