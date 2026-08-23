@@ -225,6 +225,29 @@ function testViewComponents() {
   assert(planeView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'planeView action footer includes [esc close]');
 }
 
+function testPlaneConfig() {
+  group('7. Plane Integration & Defaults');
+  const plane = require('../lib/plane');
+
+  assert(plane.DEFAULT_PLANE_CONFIG.baseUrl === 'https://plane.itgproduct.com', 'plane default baseUrl matches CodingSpace');
+  assert(plane.DEFAULT_PLANE_CONFIG.workspaceSlug === 'product', 'plane default workspaceSlug is product');
+  assert(plane.DEFAULT_PLANE_CONFIG.apiKey === 'plane_api_68b11fbeb14c431cad3a1f87455b622a', 'plane default apiKey matches user key');
+
+  const cfg = plane.config('D:/unknown/path');
+  assert(cfg.baseUrl === 'https://plane.itgproduct.com', 'resolved cfg baseUrl falls back to default');
+  assert(cfg.workspaceSlug === 'product', 'resolved cfg workspaceSlug falls back to default');
+  assert(cfg.apiKey === 'plane_api_68b11fbeb14c431cad3a1f87455b622a', 'resolved cfg apiKey falls back to default');
+
+  const mapping = {
+    'D:/Quest/CodingSpace.worktrees/CodingSpace-Plane': '72f1bdd9-8420-469f-93f7-fe27b6658b9c',
+  };
+  const exact = plane.resolveProjectId(mapping, 'D:\\Quest\\CodingSpace.worktrees\\CodingSpace-Plane');
+  assert(exact === '72f1bdd9-8420-469f-93f7-fe27b6658b9c', 'resolveProjectId matches exact normalized path');
+
+  const baseMatch = plane.resolveProjectId(mapping, 'C:\\other\\CodingSpace-Plane');
+  assert(baseMatch === '72f1bdd9-8420-469f-93f7-fe27b6658b9c', 'resolveProjectId matches by basename');
+}
+
 function main() {
   process.stdout.write('\x1b[1m\x1b[35m=== Herdr-Launcher Self-Test Suite ===\x1b[0m\n');
   const start = Date.now();
@@ -236,6 +259,7 @@ function main() {
     testAgentLaunchersDryRun();
     testAppLaunchersDryRun();
     testViewComponents();
+    testPlaneConfig();
   } catch (err) {
     failed += 1;
     errors.push(`Unhandled error: ${err.message}\n${err.stack}`);

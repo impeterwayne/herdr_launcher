@@ -156,11 +156,17 @@ class Screen {
     const buf = [`${ESC}[H`];
     const max = this.rows;
     for (let i = 0; i < max; i += 1) {
-      buf.push(`${ESC}[K`);
-      if (i < lines.length) buf.push(fit(lines[i], this.cols));
+      if (i < lines.length) {
+        buf.push(fit(lines[i], this.cols));
+      } else {
+        buf.push(' '.repeat(this.cols));
+      }
       if (i < max - 1) buf.push('\r\n');
     }
-    this.out.write(buf.join(''));
+    const out = buf.join('');
+    if (out === this._lastDraw) return;
+    this._lastDraw = out;
+    this.out.write(out);
   }
 }
 
