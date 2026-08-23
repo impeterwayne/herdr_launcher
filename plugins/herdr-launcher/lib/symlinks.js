@@ -2,7 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
+
+const { readConfig, writeConfig } = require('./context');
 
 const LINK_TYPE = process.platform === 'win32' ? 'junction' : 'dir';
 
@@ -11,7 +13,6 @@ function readLink(linkPath) {
     const stats = fs.lstatSync(linkPath);
     if (stats.isSymbolicLink()) return { isLink: true, target: fs.readlinkSync(linkPath) };
     if (stats.isDirectory()) {
-
       try {
         return { isLink: true, target: fs.readlinkSync(linkPath) };
       } catch (_) {
@@ -92,12 +93,16 @@ function remove(worktreePath, name) {
     fs.unlinkSync(linkPath);
     return { ok: true };
   } catch (err) {
-
     try {
-      fs.rmSync(linkPath, { recursive: false, force: true });
+      fs.rmdirSync(linkPath);
       return { ok: true };
     } catch (_) {
-      return { ok: false, error: err.message };
+      try {
+        fs.rmSync(linkPath, { recursive: false, force: true });
+        return { ok: true };
+      } catch (_) {
+        return { ok: false, error: err.message };
+      }
     }
   }
 }
@@ -154,6 +159,87 @@ function suggestTargets(worktreePath, managed = []) {
   return suggestions;
 }
 
+function browseFolder(initialDir) {
+  if (process.platform === 'win32') {
+    const defaultWinDir = fs.existsSync('D:\\') ? 'D:\\' : initialDir;
+    const target =
+      defaultWinDir && fs.existsSync(defaultWinDir)
+        ? defaultWinDir
+        : initialDir && fs.existsSync(initialDir)
+          ? initialDir
+          : '';
+    const initial = target ? target.replace(/'/g, "''") : '';
+    const psScript = `
+      Add-Type -AssemblyName System.Windows.Forms
+      $f = New-Object System.Windows.Forms.FolderBrowserDialog
+      $f.Description = 'Select folder to link as symlink'
+      $f.ShowNewFolderButton = $true
+      if ('${initial}') { $f.SelectedPath = '${initial}' }
+      $top = New-Object System.Windows.Forms.Form
+      $top.TopMost = $true
+      $res = $f.ShowDialog($top)
+      if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
+        Write-Output $f.SelectedPath
+      }
+      $top.Dispose()
+      $f.Dispose()
+    `;
+    try {
+      const res = spawnSync('powershell.exe', ['-NoProfile', '-STA', '-Command', psScript], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 120000,
+      });
+      const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+      return selected && fs.existsSync(selected) ? path.resolve(selected) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  if (process.platform === 'darwin') {
+    try {
+      const res = spawnSync(
+        'osascript',
+        ['-e', 'POSIX path of (choose folder with prompt "Select folder to link")'],
+        {
+          encoding: 'utf8',
+          timeout: 120000,
+        }
+      );
+      const selected = (res.stdout || '').trim();
+      return selected && fs.existsSync(selected) ? path.resolve(selected) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  try {
+    const res = spawnSync(
+      'zenity',
+      ['--file-selection', '--directory', '--title=Select folder to link'],
+      {
+        encoding: 'utf8',
+        timeout: 120000,
+      }
+    );
+    const selected = (res.stdout || '').trim();
+    if (selected && fs.existsSync(selected)) return path.resolve(selected);
+  } catch (_) {}
+  return null;
+}
+
+function addPersistentTarget(name, targetPath) {
+  const current = readConfig('symlinks.json') || {};
+  const targets = Array.isArray(current.targets) ? [...current.targets] : [];
+  const normalized = path.resolve(targetPath).toLowerCase();
+  const exists = targets.some(
+    (t) => t && t.targetPath && path.resolve(t.targetPath).toLowerCase() === normalized
+  );
+  if (!exists) {
+    targets.push({ name, targetPath: path.resolve(targetPath) });
+    writeConfig('symlinks.json', { ...current, targets });
+  }
+}
+
 module.exports = {
   LINK_TYPE,
   SHAREABLE,
@@ -164,4 +250,6 @@ module.exports = {
   remove,
   siblingWorktrees,
   suggestTargets,
+  browseFolder,
+  addPersistentTarget,
 };

@@ -213,6 +213,26 @@ function testViewComponents() {
   assert(symlinkDef?.popupEntrypoint === 'symlinks-popup', 'symlinks has popupEntrypoint symlinks-popup');
   const symlinkView = symlinkDef.view();
   assert(symlinkView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'symlinkView action footer includes [esc close]');
+  assert(symlinkView.actions.some((a) => a.key === 'b' && a.label === 'browse'), 'symlinkView action footer includes [b browse]');
+  assert(symlinkView.actions.some((a) => a.key === 'e' && a.label === 'explore'), 'symlinkView action footer includes [e explore]');
+  assert(symlinkView.actions.some((a) => a.key === 'u' && a.label === 'unlink'), 'symlinkView action footer includes [u unlink]');
+
+  const symlinksLib = require('../lib/symlinks');
+  assert(typeof symlinksLib.browseFolder === 'function', 'symlinks.browseFolder is exported as a function');
+  assert(typeof symlinksLib.addPersistentTarget === 'function', 'symlinks.addPersistentTarget is exported as a function');
+
+  // Verify refresh populates browse item
+  const mockApp = {
+    ctx: { cwd: ROOT },
+    setStatus: () => {},
+    render: () => {},
+  };
+  symlinkView.refresh(mockApp);
+  const items = symlinkView.list.items;
+  assert(
+    items.some((i) => i.itemData && i.itemData.type === 'browse' && i.label === 'Browse'),
+    'symlinkView includes Browse item with label Browse'
+  );
 
   const openspecDef = views.byKey('openspec');
   assert(openspecDef?.popupEntrypoint === 'openspec-popup', 'openspec has popupEntrypoint openspec-popup');

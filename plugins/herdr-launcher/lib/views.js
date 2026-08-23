@@ -8,6 +8,8 @@ const { findRepoRoot, configDir, readConfig } = require('./context');
 const symlinks = require('./symlinks');
 const openspec = require('./openspec');
 const plane = require('./plane');
+const apps = require('./apps');
+const path = require('node:path');
 
 const shorten = (p, max = 28) => (p && p.length > max ? `…${p.slice(-(max - 1))}` : p || '');
 
@@ -24,8 +26,10 @@ function symlinkView() {
   return {
     title: 'Symlinks',
     actions: [
-      { key: 'enter', label: 'toggle' },
-      { key: 'd', label: 'delete' },
+      { key: 'enter', label: 'link' },
+      { key: 'b', label: 'browse' },
+      { key: 'e', label: 'explore' },
+      { key: 'u', label: 'unlink' },
       { key: 'r', label: 'reload' },
       { key: 'escape', label: 'close' },
     ],
@@ -48,6 +52,7 @@ function symlinkView() {
           iconColor: sgr(link.broken ? 'link-broken' : 'link'),
           danger: link.broken,
           hint: link.broken ? 'broken' : shorten(link.targetPath),
+          itemData: { type: 'linked', name: link.name, targetPath: link.targetPath, broken: link.broken },
           run: (a) => {
             a.confirm(`unlink ${link.name}?`, () => {
               const result = symlinks.remove(worktree, link.name);
@@ -67,13 +72,29 @@ function symlinkView() {
         .filter((s) => !existingNames.has(s.name.toLowerCase()));
       items.push({ type: 'blank' });
       items.push({ type: 'group', label: 'AVAILABLE TO LINK' });
-      if (!suggestions.length)
-        items.push({
-          type: 'item',
-          icon: icon('empty'),
-          label: '(nothing to link)',
-          disabled: true,
-        });
+
+      items.push({
+        type: 'item',
+        label: 'Browse',
+        icon: icon('add'),
+        iconColor: sgr('add'),
+        hint: 'choose folder…',
+        itemData: { type: 'browse' },
+        run: (a) => {
+          const selected = symlinks.browseFolder(worktree);
+          if (selected) {
+            const name = path.basename(selected);
+            symlinks.addPersistentTarget(name, selected);
+            const result = symlinks.create(worktree, name, selected);
+            a.setStatus(
+              result.ok ? `linked ${name} → ${selected}` : result.error,
+              result.ok ? 'ok' : 'error'
+            );
+            this.refresh(a);
+          }
+        },
+      });
+
       for (const suggestion of suggestions) {
         items.push({
           type: 'item',
@@ -81,6 +102,7 @@ function symlinkView() {
           icon: icon('add'),
           iconColor: sgr('add'),
           hint: `← ${suggestion.from}`,
+          itemData: { type: 'available', name: suggestion.name, targetPath: suggestion.targetPath },
           run: (a) => {
             const result = symlinks.create(worktree, suggestion.name, suggestion.targetPath);
             a.setStatus(
@@ -94,10 +116,40 @@ function symlinkView() {
       this.list.setItems(items);
     },
     onKey(key, app) {
-      if (key === 'd') {
-        app.activate(this.list.current());
-        app.render();
+      const current = this.list.current();
+      if (key === 'b') {
+        const selected = symlinks.browseFolder(this.worktree || app.ctx.cwd);
+        if (selected) {
+          const name = path.basename(selected);
+          symlinks.addPersistentTarget(name, selected);
+          const result = symlinks.create(this.worktree || app.ctx.cwd, name, selected);
+          app.setStatus(
+            result.ok ? `linked ${name} → ${selected}` : result.error,
+            result.ok ? 'ok' : 'error'
+          );
+          this.refresh(app);
+          app.render();
+        }
         return true;
+      }
+      if (key === 'e') {
+        if (current && current.itemData) {
+          const target =
+            current.itemData.targetPath ||
+            (current.itemData.name && this.worktree ? path.join(this.worktree, current.itemData.name) : null);
+          if (target) {
+            apps.openApp(apps.byKey('explorer'), target);
+            app.setStatus(`opened explorer at ${path.basename(target)}`, 'ok');
+            app.render();
+            return true;
+          }
+        }
+      }
+      if (key === 'u' || key === 'd') {
+        if (current && current.itemData && current.itemData.type === 'linked') {
+          app.activate(current);
+          return true;
+        }
       }
       return false;
     },
@@ -168,6 +220,10 @@ function openspecView() {
 }
 
 function planeView() {
+  let inFlight = false;
+  let lastKey = '';
+  let loaded = false;
+
   return {
     title: 'Plane',
     actions: [
@@ -176,8 +232,38 @@ function planeView() {
       { key: 'escape', label: 'close' },
     ],
     list: new List([{ type: 'item', icon: icon('empty'), label: 'loading…', disabled: true }]),
-    refresh(app) {
-      if (!plane.isConfigured()) {
+    refresh(app, options = {}) {
+      const cfg = plane.config();
+      if (!plane.isConfigured(cfg)) {
+        lastKey = '';
+        inFlight = false;
+        loaded = false;
+        const missingProjectOnly = Boolean(cfg && cfg.baseUrl && cfg.workspaceSlug && cfg.apiKey && !cfg.projectId);
+        if (missingProjectOnly) {
+          this.list.setItems([
+            { type: 'group', label: 'PROJECT ID REQUIRED' },
+            {
+              type: 'item',
+              icon: icon('empty'),
+              label: 'set projectId in plane.json',
+              disabled: true,
+              hint: shorten(plane.configPath()),
+            },
+            {
+              type: 'item',
+              icon: icon('empty'),
+              label: `workspace: ${cfg.workspaceSlug || 'product'}`,
+              disabled: true,
+            },
+            {
+              type: 'item',
+              icon: icon('empty'),
+              label: 'or map in projectPlaneIds',
+              disabled: true,
+            },
+          ]);
+          return;
+        }
         this.list.setItems([
           { type: 'group', label: 'NOT CONFIGURED' },
           {
@@ -197,10 +283,34 @@ function planeView() {
         ]);
         return;
       }
-      this.list.setItems([{ type: 'item', icon: icon('empty'), label: 'loading…', disabled: true }]);
+
+      const cfgKey = `${cfg.baseUrl}|${cfg.workspaceSlug}|${cfg.projectId}|${cfg.apiKey}`;
+      const isForced = Boolean(options.force || cfgKey !== lastKey);
+
+      if (options.periodic && loaded && !isForced) {
+        return;
+      }
+
+      if (loaded && !isForced) {
+        return;
+      }
+
+      if (inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      lastKey = cfgKey;
+
+      if (this.list.items.length === 0 || (isForced && this.list.items[0]?.label === 'loading…')) {
+        this.list.setItems([{ type: 'item', icon: icon('empty'), label: 'loading…', disabled: true }]);
+      }
+
       plane
-        .issues()
+        .issues(cfg)
         .then((issues) => {
+          inFlight = false;
+          loaded = true;
           const items = [{ type: 'group', label: `ISSUES (${issues.length})` }];
           for (const issue of issues.slice(0, 100)) {
             items.push({
@@ -211,7 +321,7 @@ function planeView() {
               hint: issue.stateName,
               danger: issue.priority === 'urgent',
               run: (a) => {
-                openBrowser(plane.webUrl(issue));
+                openBrowser(plane.webUrl(issue, cfg));
                 a.setStatus(`opened ${issue.sequence} in browser`, 'ok');
               },
             });
@@ -219,9 +329,11 @@ function planeView() {
           if (issues.length === 0)
             items.push({ type: 'item', icon: icon('empty'), label: '(no issues)', disabled: true });
           this.list.setItems(items);
-          app.render();
+          if (app && app.render) app.render();
         })
         .catch((err) => {
+          inFlight = false;
+          loaded = true;
           this.list.setItems([
             { type: 'group', label: 'ERROR' },
             {
@@ -231,7 +343,7 @@ function planeView() {
               disabled: true,
             },
           ]);
-          app.render();
+          if (app && app.render) app.render();
         });
     },
     render(height, width) {
