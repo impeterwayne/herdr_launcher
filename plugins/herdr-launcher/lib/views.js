@@ -229,12 +229,21 @@ function planeView() {
     { key: 'enter', label: 'open' },
     { key: 's', label: 'sync' },
     { key: 'p', label: 'project' },
+    { key: 'k', label: 'api key' },
     { key: 'r', label: 'reload' },
     { key: 'escape', label: 'back' },
   ];
 
   const selectProjectActions = [
     { key: 'enter', label: 'select' },
+    { key: 'k', label: 'api key' },
+    { key: 'r', label: 'reload' },
+    { key: 'escape', label: 'back' },
+  ];
+
+  const notConfiguredActions = [
+    { key: 'enter', label: 'set key' },
+    { key: 'k', label: 'api key' },
     { key: 'r', label: 'reload' },
     { key: 'escape', label: 'back' },
   ];
@@ -248,11 +257,70 @@ function planeView() {
     title: 'Plane',
     actions: defaultActions,
     list: new List([{ type: 'item', icon: icon('empty'), label: 'loading…', disabled: true }]),
+    inputApiKey(app, cfg) {
+      const currentKey = (cfg && cfg.apiKey) || '';
+      const onGotKey = (entered) => {
+        if (!entered || !entered.trim()) {
+          if (app) app.setStatus('API key input cancelled', 'info');
+          if (app && app.render) app.render();
+          return;
+        }
+        const res = plane.saveApiKey(entered.trim());
+        if (!res.ok) {
+          if (app) app.setStatus(res.error || 'failed to save API key', 'error');
+          if (app && app.render) app.render();
+          return;
+        }
+        if (app) app.setStatus('saved Plane API key to plane.json', 'ok');
+        const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+        const updatedCfg = plane.config(cwd);
+        if (!updatedCfg.projectId) {
+          this.loadProjects(app, updatedCfg);
+        } else {
+          this.refresh(app, { force: true });
+        }
+        if (app && app.render) app.render();
+      };
+
+      if (app) {
+        app.setStatus('waiting for API key input…', 'info');
+        if (app.render) app.render();
+      }
+
+      const guiKey = plane.promptApiKey(currentKey);
+      if (guiKey !== null && guiKey !== undefined) {
+        onGotKey(guiKey);
+        return;
+      }
+
+      if (app && typeof app.prompt === 'function') {
+        app.prompt('Enter Plane API Key', { defaultValue: currentKey }, (entered) => {
+          onGotKey(entered);
+        });
+      }
+    },
     loadProjects(app, cfg) {
       mode = 'select-project';
       this.actions = selectProjectActions;
       this.list.setItems([{ type: 'item', icon: icon('empty'), label: 'loading projects…', disabled: true }]);
       if (app && app.render) app.render();
+
+      if (!cfg.apiKey) {
+        this.actions = notConfiguredActions;
+        this.list.setItems([
+          { type: 'group', label: 'PLANE · API KEY REQUIRED' },
+          {
+            type: 'item',
+            label: 'Enter Plane API Key…',
+            icon: icon('plane'),
+            iconColor: sgr('plane'),
+            hint: '[press k / enter]',
+            run: (a) => this.inputApiKey(a, cfg),
+          },
+        ]);
+        if (app && app.render) app.render();
+        return;
+      }
 
       plane
         .projects(cfg)
@@ -280,6 +348,14 @@ function planeView() {
           if (!projs.length) {
             items.push({ type: 'item', icon: icon('empty'), label: '(no projects found)', disabled: true });
           }
+          items.push({
+            type: 'item',
+            label: 'Update API Key…',
+            icon: icon('plane'),
+            iconColor: sgr('plane'),
+            hint: '[press k]',
+            run: (a) => this.inputApiKey(a, cfg),
+          });
           this.list.setItems(items);
           if (app && app.render) app.render();
         })
@@ -287,6 +363,14 @@ function planeView() {
           this.list.setItems([
             { type: 'group', label: 'ERROR LOADING PROJECTS' },
             { type: 'item', icon: icon('alert'), label: err.message.split('\n')[0], disabled: true },
+            {
+              type: 'item',
+              icon: icon('plane'),
+              iconColor: sgr('plane'),
+              label: 'Set Plane API Key…',
+              hint: '[press k / enter]',
+              run: (a) => this.inputApiKey(a, cfg),
+            },
             {
               type: 'item',
               icon: icon('empty'),
@@ -393,6 +477,12 @@ function planeView() {
         });
     },
     onKey(key, app) {
+      if (key === 'k') {
+        const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+        const cfg = plane.config(cwd);
+        this.inputApiKey(app, cfg);
+        return true;
+      }
       if (mode === 'select-project' || mode === 'select-crawl-scope') {
         if (key === 'escape' || key === 'q') {
           const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
@@ -412,8 +502,12 @@ function planeView() {
         const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
         const cfg = plane.config(cwd);
         if (!plane.isConfigured(cfg)) {
-          app.setStatus('select a project first to sync tasks', 'error');
-          app.render();
+          if (!cfg.apiKey) {
+            this.inputApiKey(app, cfg);
+          } else {
+            app.setStatus('select a project first to sync tasks', 'error');
+            app.render();
+          }
           return true;
         }
         this.loadCrawlOptions(app, cfg);
@@ -440,6 +534,35 @@ function planeView() {
         lastKey = '';
         inFlight = false;
         loaded = false;
+        if (!cfg.apiKey) {
+          this.actions = notConfiguredActions;
+          this.list.setItems([
+            { type: 'group', label: 'PLANE · API KEY REQUIRED' },
+            {
+              type: 'item',
+              icon: icon('plane'),
+              iconColor: sgr('plane'),
+              label: 'Enter Plane API Key…',
+              hint: '[press k / enter]',
+              run: (a) => this.inputApiKey(a, cfg),
+            },
+            {
+              type: 'item',
+              icon: icon('empty'),
+              label: `Base: ${cfg.baseUrl} (${cfg.workspaceSlug})`,
+              disabled: true,
+            },
+            {
+              type: 'item',
+              icon: icon('empty'),
+              label: 'plane.json',
+              disabled: true,
+              hint: shorten(plane.configPath()),
+            },
+          ]);
+          return;
+        }
+
         const missingProjectOnly = Boolean(cfg && cfg.baseUrl && cfg.workspaceSlug && cfg.apiKey && !cfg.projectId);
         if (missingProjectOnly) {
           this.loadProjects(app, cfg);
@@ -524,6 +647,14 @@ function planeView() {
               icon: icon('alert'),
               label: err.message.split('\n')[0],
               disabled: true,
+            },
+            {
+              type: 'item',
+              icon: icon('plane'),
+              iconColor: sgr('plane'),
+              label: 'Update Plane API Key…',
+              hint: '[press k / enter]',
+              run: (a) => this.inputApiKey(a, cfg),
             },
           ]);
           if (app && app.render) app.render();

@@ -45,6 +45,8 @@ const COMPONENTS = [
 
 const DEFAULT_ROOTS = [
   process.env.HERDR_LAUNCHER_OPENSPEC_ROOT,
+  path.join(__dirname, '..', 'toolkits', 'OpenSpec'),
+  path.join(__dirname, '..', 'toolkits', 'openspec'),
   'D:\\Quest\\CodingSpace\\toolkits\\OpenSpec',
   path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Coding Space', 'resources', 'toolkits', 'OpenSpec'),
 ].filter(Boolean);

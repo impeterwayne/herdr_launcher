@@ -86,7 +86,15 @@ function subscribe(types, onEvent, { onClose, onError, onReady } = {}) {
         if (onReady) onReady();
         return;
       }
-      if (message.event && message.data) onEvent(message);
+      if (
+        message.event ||
+        message.method === 'events.event' ||
+        message.method === 'events.notification' ||
+        message.type ||
+        message.data
+      ) {
+        onEvent(message);
+      }
     },
     onClose,
     onError,

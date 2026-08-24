@@ -1,6 +1,6 @@
 # Agent Development Rules & Guidelines
 
-Instructions and guidelines for AI coding agents implementing features and maintaining the `herdr_research` workspace and `herdr-launcher` plugin.
+Instructions and guidelines for AI coding agents implementing features and maintaining the `herdr_launcher` workspace and `herdr-launcher` plugin.
 
 ---
 
@@ -76,5 +76,5 @@ Instructions and guidelines for AI coding agents implementing features and maint
 | **Symlinks Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js symlinks --dry-run` |
 | **OpenSpec Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js openspec --dry-run` |
 | **Plane Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js plane --dry-run` |
-| **Link Plugin to Herdr** | `herdr plugin link D:\Quest\herdr_research\plugins\herdr-launcher` |
+| **Link Plugin to Herdr** | `herdr plugin link ./plugins/herdr-launcher` |
 | **Reload Herdr Config** | `herdr server reload-config` |

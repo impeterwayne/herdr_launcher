@@ -40,15 +40,13 @@ function splitPane(targetPane, direction = 'right', ratio = 0.5, cwd, env) {
   const normDir = direction || 'right';
   if (normDir === 'left') {
     const rawRatio = ratio !== null && ratio !== undefined ? Number(ratio) : 0.5;
-    const herdrRatio = Number((1 - rawRatio).toFixed(4));
-    const paneId = splitPane(targetPane, 'right', herdrRatio, cwd, env);
+    const paneId = splitPane(targetPane, 'right', rawRatio, cwd, env);
     paneSwap(targetPane, paneId);
     return paneId;
   }
   if (normDir === 'up') {
     const rawRatio = ratio !== null && ratio !== undefined ? Number(ratio) : 0.5;
-    const herdrRatio = Number((1 - rawRatio).toFixed(4));
-    const paneId = splitPane(targetPane, 'down', herdrRatio, cwd, env);
+    const paneId = splitPane(targetPane, 'down', rawRatio, cwd, env);
     paneSwap(targetPane, paneId);
     return paneId;
   }

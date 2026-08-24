@@ -144,6 +144,27 @@ function dockAll(why) {
   }
 }
 
+function reconcileAll(why) {
+  let panes;
+  try {
+    panes = h.paneList();
+  } catch (err) {
+    return;
+  }
+  const tabs = [...new Set(panes.map((p) => p.tab_id))];
+  for (const tabId of tabs) {
+    if (isStashTabId(tabId)) continue;
+    try {
+      const res = dock.reconcileTab({ tabId, panes, cols });
+      if (res && res.action && res.action !== 'noop') {
+        log(`reconciled ${tabId}: ${res.action} (${why})`);
+      }
+    } catch (err) {
+      log(`reconcile error in ${tabId}: ${err.message.split('\n')[0]}`);
+    }
+  }
+}
+
 function watch() {
   const holder = runningPid();
   if (holder) {
@@ -155,41 +176,104 @@ function watch() {
     return;
   }
   rememberAutoDock(true);
-  log(`watching tab.created via ${api.socketPath()}`);
+  log(`watching events via ${api.socketPath()}`);
+
+  try {
+    dockAll('watcher-startup');
+  } catch (err) {
+    log(`initial sync error: ${err.message.split('\n')[0]}`);
+  }
 
   let attempt = 0;
+  let debounceTimer = null;
+  const triggerReconcile = (why) => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => reconcileAll(why), 80);
+  };
+
+  const periodicTimer = setInterval(() => {
+    try {
+      dockAll('periodic-check');
+    } catch (_) {}
+  }, 1500);
+
   const open = () => {
     let ready = false;
     api.subscribe(
-      ['tab.created'],
+      [
+        'tab.created',
+        'tab.closed',
+        'pane.closed',
+        'pane.exited',
+        'layout.updated',
+      ],
       (envelope) => {
-        const tab = envelope.data && envelope.data.tab;
-        if (!tab || !tab.tab_id) return;
+        const type =
+          (envelope.data && envelope.data.type) ||
+          envelope.event ||
+          envelope.type ||
+          (envelope.params && envelope.params.event) ||
+          (envelope.params && envelope.params.type) ||
+          '';
 
-        if (tab.pane_count > 1) {
-          log(`skip ${tab.tab_id}: ${tab.pane_count} panes, not a new tab`);
-          return;
+        if (type === 'tab_created' || type === 'tab.created') {
+          const tabData =
+            (envelope.data && envelope.data.tab) ||
+            (envelope.params && envelope.params.data && envelope.params.data.tab) ||
+            (envelope.params && envelope.params.tab) ||
+            envelope.tab ||
+            envelope.data ||
+            envelope.params ||
+            {};
+
+          const tabId =
+            tabData.tab_id ||
+            envelope.tab_id ||
+            (envelope.data && envelope.data.tab_id) ||
+            (envelope.params && envelope.params.tab_id);
+
+          if (!tabId) {
+            dockAll('tab.created-event');
+            return;
+          }
+
+          if (tabData.pane_count > 1) {
+            log(`skip ${tabId}: ${tabData.pane_count} panes, not a new tab`);
+            return;
+          }
+
+          const label = typeof tabData.label === 'string' ? tabData.label : null;
+          setTimeout(
+            () =>
+              dockTab(tabId, 'tab.created', {
+                label,
+              }),
+            50
+          );
+        } else if (
+          type === 'pane_closed' ||
+          type === 'pane.closed' ||
+          type === 'pane_exited' ||
+          type === 'pane.exited' ||
+          type === 'layout_updated' ||
+          type === 'layout.updated'
+        ) {
+          triggerReconcile(type);
         }
-
-        setTimeout(
-          () =>
-            dockTab(tab.tab_id, 'tab.created', {
-              requireFresh: true,
-
-              label: typeof tab.label === 'string' ? tab.label : null,
-            }),
-          150
-        );
       },
       {
         onReady: () => {
           ready = true;
           attempt = 0;
+          try {
+            dockAll('socket-ready');
+          } catch (_) {}
         },
         onError: (err) => log(`socket error: ${err.message}`),
         onClose: () => {
           if (attempt >= 10) {
             log('herdr is gone — stopping');
+            clearInterval(periodicTimer);
             process.exit(0);
           }
           const delay = Math.min(30000, 2 ** attempt * 1000);
@@ -259,7 +343,26 @@ function stop() {
 }
 
 try {
-  if (argv.includes('--stop')) process.stdout.write(`${stop()}\n`);
+  if (argv.includes('--dry-run')) {
+    const pid = runningPid();
+    let action = 'watch';
+    if (argv.includes('--start')) action = 'start';
+    else if (argv.includes('--stop')) action = 'stop';
+    else if (argv.includes('--status')) action = 'status';
+    else if (argv.includes('--once')) action = 'dock-once';
+
+    const autoDockVal = action === 'stop' ? false : (readConfig('watch.json') || {}).autoDock !== false;
+    process.stdout.write(
+      `${JSON.stringify({
+        action,
+        running: Boolean(pid),
+        pid: pid || null,
+        autoDock: autoDockVal,
+        cols,
+        dryRun: true,
+      })}\n`
+    );
+  } else if (argv.includes('--stop')) process.stdout.write(`${stop()}\n`);
   else if (argv.includes('--status')) {
     const pid = runningPid();
     process.stdout.write(`${pid ? `running (pid ${pid})` : 'not running'}\n`);

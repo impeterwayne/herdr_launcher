@@ -5,6 +5,12 @@ command = "herdr-launcher.toggle-launcher"
 description = "toggle launcher sidebar"
 
 [[keys.command]]
+key = "prefix+m"
+type = "plugin_action"
+command = "herdr-launcher.stack-mode"
+description = "stack mode (maximize active pane with launcher)"
+
+[[keys.command]]
 key = "prefix+alt+l"
 type = "plugin_action"
 command = "herdr-launcher.tool-symlinks"

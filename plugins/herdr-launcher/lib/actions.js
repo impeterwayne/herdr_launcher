@@ -3,7 +3,7 @@
 const { A, GUTTER, displayWidth } = require('./tui');
 
 const ACTION_ROWS = 2;
-const CHIP_GAP = 2;
+const CHIP_GAP = 1;
 
 const KEY_GLYPH = {
   enter: '⏎',

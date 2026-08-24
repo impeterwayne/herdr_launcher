@@ -16,7 +16,7 @@ const CONFIG_FILE = 'plane.json';
 const DEFAULT_PLANE_CONFIG = {
   baseUrl: 'https://plane.itgproduct.com',
   workspaceSlug: 'product',
-  apiKey: 'plane_api_68b11fbeb14c431cad3a1f87455b622a',
+  apiKey: '',
   projectId: '',
 };
 
@@ -63,15 +63,26 @@ function readLocalPlaneConfig(targetPath) {
   return null;
 }
 
+function normalizePathKey(p) {
+  if (!p || typeof p !== 'string') return '';
+  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function getPathBasename(p) {
+  const n = normalizePathKey(p);
+  const idx = n.lastIndexOf('/');
+  return idx >= 0 ? n.slice(idx + 1) : n;
+}
+
 function resolveProjectId(projectPlaneIds, targetPath) {
   if (!projectPlaneIds || typeof projectPlaneIds !== 'object') return null;
   if (!targetPath) return null;
 
-  const targetNorm = path.resolve(targetPath).toLowerCase();
+  const targetNorm = normalizePathKey(targetPath);
   const worktreeRoot = findRepoRoot(targetPath);
-  const worktreeNorm = worktreeRoot ? path.resolve(worktreeRoot).toLowerCase() : null;
+  const worktreeNorm = worktreeRoot ? normalizePathKey(worktreeRoot) : null;
   const parentRoot = findParentRepoRoot(targetPath);
-  const parentNorm = parentRoot ? path.resolve(parentRoot).toLowerCase() : null;
+  const parentNorm = parentRoot ? normalizePathKey(parentRoot) : null;
 
   const candidatePaths = [targetNorm];
   if (worktreeNorm && !candidatePaths.includes(worktreeNorm)) candidatePaths.push(worktreeNorm);
@@ -82,7 +93,7 @@ function resolveProjectId(projectPlaneIds, targetPath) {
     if (!id || typeof id !== 'string') continue;
     const cleanKey = key.trim();
     if (!cleanKey) continue;
-    const keyNorm = path.resolve(cleanKey).toLowerCase();
+    const keyNorm = normalizePathKey(cleanKey);
     if (candidatePaths.includes(keyNorm)) {
       return id.trim();
     }
@@ -93,9 +104,9 @@ function resolveProjectId(projectPlaneIds, targetPath) {
     if (!id || typeof id !== 'string') continue;
     const cleanKey = key.trim();
     if (!cleanKey) continue;
-    const keyNorm = path.resolve(cleanKey).toLowerCase();
+    const keyNorm = normalizePathKey(cleanKey);
     for (const cand of candidatePaths) {
-      if (cand.startsWith(keyNorm + path.sep) || cand.startsWith(keyNorm + '/')) {
+      if (cand.startsWith(keyNorm + '/')) {
         return id.trim();
       }
     }
@@ -103,18 +114,18 @@ function resolveProjectId(projectPlaneIds, targetPath) {
 
   // 3. Basename match (parent workspace base, worktree base, or target base)
   const candidateBases = [];
-  if (parentNorm) candidateBases.push(path.basename(parentNorm));
-  if (worktreeNorm && !candidateBases.includes(path.basename(worktreeNorm))) {
-    candidateBases.push(path.basename(worktreeNorm));
+  if (parentNorm) candidateBases.push(getPathBasename(parentNorm));
+  if (worktreeNorm && !candidateBases.includes(getPathBasename(worktreeNorm))) {
+    candidateBases.push(getPathBasename(worktreeNorm));
   }
-  const targetBase = path.basename(targetNorm);
+  const targetBase = getPathBasename(targetNorm);
   if (!candidateBases.includes(targetBase)) candidateBases.push(targetBase);
 
   for (const [key, id] of Object.entries(projectPlaneIds)) {
     if (!id || typeof id !== 'string') continue;
     const cleanKey = key.trim();
     if (!cleanKey) continue;
-    const keyBase = path.basename(cleanKey).toLowerCase();
+    const keyBase = getPathBasename(cleanKey);
     if (candidateBases.includes(keyBase)) {
       return id.trim();
     }
@@ -135,6 +146,78 @@ function saveWorkspaceProjectId(targetPath, projectId) {
   delete updated.projectId;
   writeConfig(CONFIG_FILE, updated);
   return { ok: true, parentRoot, projectId };
+}
+
+function saveApiKey(apiKey) {
+  if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+    return { ok: false, error: 'Plane API key cannot be empty' };
+  }
+  const cleanKey = apiKey.trim();
+  const current = readConfig(CONFIG_FILE) || {};
+  const updated = { ...current, apiKey: cleanKey };
+  writeConfig(CONFIG_FILE, updated);
+  return { ok: true, apiKey: cleanKey };
+}
+
+function promptApiKey(initialValue = '') {
+  if (process.platform === 'win32') {
+    const initial = (initialValue || '').replace(/'/g, "''");
+    const psScript = `
+      Add-Type -AssemblyName Microsoft.VisualBasic
+      Add-Type -AssemblyName System.Windows.Forms
+      $top = New-Object System.Windows.Forms.Form
+      $top.TopMost = $true
+      $key = [Microsoft.VisualBasic.Interaction]::InputBox("Enter your Plane API Key (e.g. plane_api_...):", "Plane API Key", '${initial}')
+      if ($key) {
+        Write-Output $key
+      }
+      $top.Dispose()
+    `;
+    try {
+      const { spawnSync } = require('node:child_process');
+      const res = spawnSync('powershell.exe', ['-NoProfile', '-STA', '-Command', psScript], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 120000,
+      });
+      const key = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+      return key ? key.trim() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  if (process.platform === 'darwin') {
+    try {
+      const { spawnSync } = require('node:child_process');
+      const escaped = (initialValue || '').replace(/"/g, '\\"');
+      const res = spawnSync(
+        'osascript',
+        ['-e', `text returned of (display dialog "Enter your Plane API Key:" default answer "${escaped}" with title "Plane API Key")`],
+        {
+          encoding: 'utf8',
+          timeout: 120000,
+        }
+      );
+      const key = (res.stdout || '').trim();
+      return key ? key.trim() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  try {
+    const { spawnSync } = require('node:child_process');
+    const res = spawnSync(
+      'zenity',
+      ['--entry', '--title=Plane API Key', '--text=Enter your Plane API Key:', `--entry-text=${initialValue || ''}`],
+      {
+        encoding: 'utf8',
+        timeout: 120000,
+      }
+    );
+    const key = (res.stdout || '').trim();
+    if (key) return key.trim();
+  } catch (_) {}
+  return null;
 }
 
 function config(targetPath) {
@@ -177,6 +260,8 @@ function config(targetPath) {
       (typeof cs.planeWorkspaceSlug === 'string' && cs.planeWorkspaceSlug.trim()) ||
       DEFAULT_PLANE_CONFIG.workspaceSlug,
     apiKey:
+      (typeof process.env.HERDR_PLANE_API_KEY === 'string' && process.env.HERDR_PLANE_API_KEY.trim()) ||
+      (typeof process.env.PLANE_API_KEY === 'string' && process.env.PLANE_API_KEY.trim()) ||
       (typeof local.apiKey === 'string' && local.apiKey.trim()) ||
       (typeof raw.apiKey === 'string' && raw.apiKey.trim()) ||
       (typeof cs.planeApiKey === 'string' && cs.planeApiKey.trim()) ||
@@ -644,6 +729,8 @@ module.exports = {
   webUrl,
   resolveProjectId,
   saveWorkspaceProjectId,
+  saveApiKey,
+  promptApiKey,
   readLocalPlaneConfig,
   readCodingSpaceSettings,
   fetchProjectDetails,
@@ -657,3 +744,19 @@ module.exports = {
   generateTaskListMD,
   syncProject,
 };
+
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  if (args.includes('--set-key') || args.includes('--set-api-key')) {
+    const idx = args.indexOf('--set-key') !== -1 ? args.indexOf('--set-key') : args.indexOf('--set-api-key');
+    const val = args[idx + 1];
+    if (val) {
+      saveApiKey(val);
+      process.stdout.write(`Saved Plane API key to ${CONFIG_FILE}\n`);
+      process.exit(0);
+    } else {
+      process.stderr.write('Missing API key value after --set-key\n');
+      process.exit(1);
+    }
+  }
+}

@@ -66,12 +66,130 @@ function jetbrainsInstalls(parents, dirRe, relExe) {
   return found.sort((a, b) => b.mtime - a.mtime).map((f) => f.exe);
 }
 
+function findFromDesktopFiles(pattern) {
+  if (process.platform === 'win32') return [];
+  const appDirs = [
+    path.join(HOME, '.local', 'share', 'applications'),
+    '/usr/share/applications',
+    '/usr/local/share/applications',
+    '/var/lib/flatpak/exports/share/applications',
+    path.join(HOME, '.local', 'share', 'flatpak', 'exports', 'share', 'applications'),
+    '/var/lib/snapd/desktop/applications',
+  ];
+  const found = [];
+  for (const dir of appDirs) {
+    let files = [];
+    try {
+      files = fs.readdirSync(dir);
+    } catch (_) {
+      continue;
+    }
+    for (const file of files) {
+      if (!file.endsWith('.desktop') || !pattern.test(file)) continue;
+      try {
+        const content = fs.readFileSync(path.join(dir, file), 'utf8');
+        const match = content.match(/^Exec=(.*)$/m);
+        if (match) {
+          let execLine = match[1].trim();
+          execLine = execLine.replace(/%[a-zA-Z]/g, '').trim();
+          let exe = execLine;
+          if (exe.startsWith('"')) {
+            const end = exe.indexOf('"', 1);
+            if (end !== -1) exe = exe.slice(1, end);
+          } else {
+            exe = exe.split(' ')[0];
+          }
+          if (exe && fs.existsSync(exe)) {
+            found.push(exe);
+          }
+        }
+      } catch (_) {}
+    }
+  }
+  return found;
+}
+
+function findAntigravityInstalls() {
+  const dirs = [
+    path.join(HOME, 'Tools'),
+    path.join(HOME, 'Downloads'),
+    path.join(HOME, '.local', 'share'),
+    path.join(HOME, 'Applications'),
+    path.join(HOME, 'opt'),
+    '/opt',
+    '/usr/local/share',
+    '/usr/share',
+    '/snap/bin',
+  ];
+  if (process.platform === 'win32') {
+    dirs.push(
+      path.join(HOME, 'AppData', 'Local', 'Programs'),
+      PF,
+      PF86
+    );
+  } else if (process.platform === 'darwin') {
+    dirs.push('/Applications', path.join(HOME, 'Applications'));
+  }
+  const rels = process.platform === 'win32'
+    ? [
+        path.join('bin', 'antigravity-ide.cmd'),
+        'Antigravity IDE.exe',
+        'antigravity-ide.exe',
+        path.join('bin', 'antigravity.cmd'),
+      ]
+    : process.platform === 'darwin'
+    ? [
+        'Contents/MacOS/Antigravity IDE',
+        'Contents/Resources/app/bin/antigravity-ide',
+      ]
+    : [
+        path.join('bin', 'antigravity-ide'),
+        'antigravity-ide',
+        path.join('bin', 'antigravity'),
+        'antigravity',
+      ];
+
+  const found = [];
+  for (const parent of dirs) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(parent, { withFileTypes: true }).filter((d) => d.isDirectory());
+    } catch (_) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!/antigravity/i.test(entry.name)) continue;
+      const root = path.join(parent, entry.name);
+      for (const rel of rels) {
+        const exe = path.join(root, rel);
+        if (!fs.existsSync(exe)) continue;
+        let mtime = 0;
+        try {
+          mtime = fs.statSync(root).mtimeMs;
+        } catch (_) {}
+        found.push({ exe, mtime });
+      }
+    }
+  }
+
+  const desktopHits = findFromDesktopFiles(/antigravity/i);
+  for (const exe of desktopHits) {
+    let mtime = 0;
+    try {
+      mtime = fs.statSync(exe).mtimeMs;
+    } catch (_) {}
+    found.push({ exe, mtime });
+  }
+
+  return found.sort((a, b) => b.mtime - a.mtime).map((f) => f.exe);
+}
+
 const APPS = [
   {
     key: 'antigravity',
     iconKey: 'app-antigravity',
     label: 'Antigravity IDE',
-    fallback: 'antigravity-ide',
+    fallback: ['antigravity-ide', 'antigravity', 'agy-ide'],
     procName: 'Antigravity IDE',
     candidates: [
       path.join(HOME, 'AppData', 'Local', 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
@@ -79,16 +197,44 @@ const APPS = [
       path.join(PF, 'Antigravity IDE', 'Antigravity IDE.exe'),
       '/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE',
       '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide',
+      path.join(HOME, 'Applications', 'Antigravity IDE.app', 'Contents', 'MacOS', 'Antigravity IDE'),
+      path.join(HOME, 'Applications', 'Antigravity IDE.app', 'Contents', 'Resources', 'app', 'bin', 'antigravity-ide'),
+      path.join(HOME, 'Tools', 'Antigravity IDE', 'bin', 'antigravity-ide'),
+      path.join(HOME, 'Tools', 'Antigravity IDE', 'antigravity-ide'),
+      path.join(HOME, 'Downloads', 'Antigravity IDE', 'bin', 'antigravity-ide'),
+      path.join(HOME, 'Downloads', 'Antigravity IDE', 'antigravity-ide'),
+      path.join(HOME, '.local', 'share', 'antigravity-ide', 'bin', 'antigravity-ide'),
+      path.join(HOME, '.local', 'share', 'antigravity-ide', 'antigravity-ide'),
+      path.join(HOME, '.local', 'share', 'Antigravity IDE', 'bin', 'antigravity-ide'),
+      path.join(HOME, '.local', 'share', 'Antigravity IDE', 'antigravity-ide'),
+      path.join(HOME, 'Applications', 'Antigravity IDE', 'bin', 'antigravity-ide'),
+      path.join(HOME, 'Applications', 'Antigravity IDE', 'antigravity-ide'),
+      path.join(HOME, 'Applications', 'antigravity-ide', 'bin', 'antigravity-ide'),
+      path.join(HOME, 'Applications', 'antigravity-ide', 'antigravity-ide'),
       path.join(HOME, '.antigravity-ide', 'antigravity-ide', 'bin', 'antigravity-ide'),
+      path.join(HOME, '.antigravity-ide', 'bin', 'antigravity-ide'),
+      path.join(HOME, '.antigravity-ide', 'antigravity-ide'),
       path.join(HOME, '.antigravity', 'antigravity', 'bin', 'antigravity'),
+      path.join(HOME, '.antigravity', 'bin', 'antigravity'),
+      path.join(HOME, '.local', 'bin', 'antigravity-ide'),
+      path.join(HOME, '.local', 'bin', 'antigravity'),
+      '/opt/Antigravity IDE/bin/antigravity-ide',
+      '/opt/Antigravity IDE/antigravity-ide',
+      '/opt/antigravity-ide/bin/antigravity-ide',
+      '/opt/antigravity-ide/antigravity-ide',
+      '/usr/share/antigravity-ide/bin/antigravity-ide',
+      '/usr/share/antigravity-ide/antigravity-ide',
+      '/usr/local/bin/antigravity-ide',
+      '/usr/bin/antigravity-ide',
     ],
+    discover: findAntigravityInstalls,
     argsFor: (cwd) => [cwd],
   },
   {
     key: 'android-studio',
     iconKey: 'app-android-studio',
     label: 'Android Studio',
-    fallback: 'studio64',
+    fallback: ['studio64', 'studio', 'studio.sh'],
     procName: 'studio64',
     candidates: [
       path.join(PF, 'Android', 'Android Studio', 'bin', 'studio64.exe'),
@@ -98,6 +244,21 @@ const APPS = [
       path.join(HOME, 'Applications', 'Android Studio.app', 'Contents', 'MacOS', 'studio'),
       '/Applications/Android Studio Preview.app/Contents/MacOS/studio',
       path.join(HOME, 'Applications', 'Android Studio Preview.app', 'Contents', 'MacOS', 'studio'),
+      path.join(HOME, 'Tools', 'android-studio', 'bin', 'studio.sh'),
+      path.join(HOME, 'Tools', 'Android Studio', 'bin', 'studio.sh'),
+      path.join(HOME, 'Downloads', 'android-studio', 'bin', 'studio.sh'),
+      path.join(HOME, 'Downloads', 'Android Studio', 'bin', 'studio.sh'),
+      path.join(HOME, 'android-studio', 'bin', 'studio.sh'),
+      path.join(HOME, 'Android', 'android-studio', 'bin', 'studio.sh'),
+      path.join(HOME, '.local', 'share', 'android-studio', 'bin', 'studio.sh'),
+      '/opt/android-studio/bin/studio.sh',
+      '/opt/android-studio-preview/bin/studio.sh',
+      '/usr/local/android-studio/bin/studio.sh',
+      '/usr/share/android-studio/bin/studio.sh',
+      path.join(HOME, '.local', 'bin', 'studio'),
+      path.join(HOME, '.local', 'bin', 'studio.sh'),
+      '/usr/local/bin/studio',
+      '/usr/bin/studio',
     ],
 
     discover: () =>
@@ -106,9 +267,18 @@ const APPS = [
           path.join(PF, 'Android'),
           path.join(PF86, 'Android'),
           path.join(HOME, 'AppData', 'Local', 'Android'),
+          path.join(HOME, 'Tools'),
+          path.join(HOME, 'Downloads'),
+          path.join(HOME, '.local', 'share'),
+          path.join(HOME, 'Android'),
+          path.join(HOME, 'Applications'),
+          path.join(HOME, 'opt'),
+          '/opt',
+          '/usr/local/share',
+          '/usr/share',
         ],
-        /^Android Studio/i,
-        path.join('bin', 'studio64.exe')
+        /^(android-studio|Android Studio)/i,
+        process.platform === 'win32' ? path.join('bin', 'studio64.exe') : path.join('bin', 'studio.sh')
       ),
     validate: hasProductMetadata,
     argsFor: (cwd) => [cwd],
@@ -117,7 +287,7 @@ const APPS = [
     key: 'vscode',
     iconKey: 'app-vscode',
     label: 'VS Code',
-    fallback: 'code',
+    fallback: ['code', 'code-insiders', 'cursor'],
     procName: 'Code',
 
     candidates: [
@@ -134,6 +304,17 @@ const APPS = [
       '/Applications/Cursor.app/Contents/Resources/app/bin/code',
       '/Applications/Cursor.app/Contents/Resources/app/bin/cursor',
       path.join(HOME, 'Applications', 'Cursor.app', 'Contents', 'Resources', 'app', 'bin', 'code'),
+      '/usr/share/code/bin/code',
+      '/usr/share/code/code',
+      '/usr/bin/code',
+      '/usr/local/bin/code',
+      path.join(HOME, '.local', 'bin', 'code'),
+      path.join(HOME, '.local', 'share', 'code', 'bin', 'code'),
+      path.join(HOME, 'Tools', 'VSCode', 'bin', 'code'),
+      path.join(HOME, 'Tools', 'VSCode', 'code'),
+      path.join(HOME, 'Applications', 'VSCode', 'bin', 'code'),
+      '/opt/visual-studio-code/bin/code',
+      '/opt/vscode/bin/code',
     ],
     argsFor: (cwd) => [cwd],
   },
@@ -187,8 +368,16 @@ function resolveApp(app) {
     if (ok(candidate)) return unwrap(candidate);
   }
 
-  const onPath = app.fallback ? whichPreferShim(app.fallback) : null;
-  return ok(onPath) ? unwrap(onPath) : null;
+  const fallbacks = Array.isArray(app.fallback)
+    ? app.fallback
+    : app.fallback
+    ? [app.fallback]
+    : [];
+  for (const fb of fallbacks) {
+    const onPath = whichPreferShim(fb);
+    if (ok(onPath)) return unwrap(onPath);
+  }
+  return null;
 }
 
 function spawnDetached(exe, args, workdir) {

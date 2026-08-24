@@ -98,28 +98,46 @@ function main() {
     }
     const orphans = dock.orphansIn(panes, tab.tab_id);
     const orphan = orphans.find((p) => dock.onRightEdge(p.pane_id)) || null;
-    if (!orphan) {
+    if (orphan) {
+      if (dryRun) {
+        adopted.push({ tab: tab.tab_id, pane: orphan.pane_id, command: dock.launchCommand() });
+        continue;
+      }
+      const result = dock.adopt({ paneId: orphan.pane_id });
+      log(`adopted ${result.pane} in ${tab.tab_id}`);
+      adopted.push({ tab: tab.tab_id, ...result });
+      continue;
+    }
 
-      skipped.push({ tab: tab.tab_id, reason: 'no restored launcher pane' });
-      continue;
+    const autoDock = (readConfig('watch.json') || {}).autoDock !== false;
+    if (autoDock) {
+      if (dryRun) {
+        adopted.push({ tab: tab.tab_id, action: 'dock', command: dock.launchCommand() });
+        continue;
+      }
+      try {
+        const result = dock.ensure({ tabId: tab.tab_id, panes, cols: dock.defaultCols(), focus: false });
+        if (result) {
+          log(`docked launcher in ${tab.tab_id}`);
+          adopted.push({ tab: tab.tab_id, ...result });
+          continue;
+        }
+      } catch (err) {
+        log(`failed to dock in ${tab.tab_id}: ${err.message.split('\n')[0]}`);
+      }
     }
-    if (dryRun) {
-      adopted.push({ tab: tab.tab_id, pane: orphan.pane_id, command: dock.launchCommand() });
-      continue;
-    }
-    const result = dock.adopt({ paneId: orphan.pane_id });
-    log(`adopted ${result.pane} in ${tab.tab_id}`);
-    adopted.push({ tab: tab.tab_id, ...result });
+
+    skipped.push({ tab: tab.tab_id, reason: 'no restored launcher pane' });
   }
 
   const pruned = dryRun ? [] : stash.prune(panes, tabs);
   if (pruned.length) log(`pruned focus-mode entries: ${JSON.stringify(pruned)}`);
 
-  const autoDock = Boolean((readConfig('watch.json') || {}).autoDock);
+  const autoDock = (readConfig('watch.json') || {}).autoDock !== false;
   const watch = autoDock && !argv.includes('--no-watch');
   if (watch && !dryRun) {
     startWatcher();
-    log('tab watcher restarted (watch.json said it was running)');
+    log('tab watcher started (autoDock enabled)');
   }
 
   return { action: 'startup', adopted, skipped, pruned, watcher: watch ? 'started' : 'not started' };

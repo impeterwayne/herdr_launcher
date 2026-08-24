@@ -11,7 +11,9 @@ const JS_ENTRY = path.join(ROOT, 'bin', 'launcher.js');
 
 const TOKEN_TTL_MS = 90000;
 
-const EXPANDED_COLS = 36;
+const BAR_COLS = 20;
+const BORDER_COLS = 2;
+const EXPANDED_COLS = BAR_COLS + BORDER_COLS;
 
 const defaultCols = () => Number((readConfig('sidebar.json') || {}).expandedCols) || EXPANDED_COLS;
 
@@ -94,7 +96,61 @@ function adopt({ paneId, shim = false }) {
   return { pane: paneId, command };
 }
 
+function maintainSidebarSize(tabId, sidebarPaneId, cols = defaultCols()) {
+  try {
+    const layout = h.paneLayout(sidebarPaneId);
+    if (!layout || layout.zoomed || !layout.splits || !layout.splits.length) return null;
+    const sidebarSplit = layout.splits.find(
+      (s) => s.direction === 'right' && s.rect.x === layout.area.x && s.rect.width === layout.area.width
+    );
+    if (!sidebarSplit) return null;
+    const targetRatio = Math.max(0.1, Math.min(0.9, (layout.area.width - cols) / layout.area.width));
+    const diff = Number((targetRatio - sidebarSplit.ratio).toFixed(4));
+    if (Math.abs(diff) >= 0.02) {
+      const dir = diff > 0 ? 'right' : 'left';
+      h.tryHerdr(['pane', 'resize', '--pane', sidebarPaneId, '--direction', dir, '--amount', String(Math.abs(diff))]);
+      return { action: 'resized', diff, ratio: targetRatio };
+    }
+    return { action: 'noop', ratio: sidebarSplit.ratio };
+  } catch (_) {
+    return null;
+  }
+}
+
+function fallbackTerminal({ tabId, sidebarPane, cwd, cols = defaultCols() }) {
+  try {
+    if (!sidebarPane || !sidebarPane.pane_id) return null;
+    const layout = h.paneLayout(sidebarPane.pane_id);
+    const areaWidth = (layout && layout.area && layout.area.width) || 80;
+    const ratio = Math.min(0.95, Math.max(0.2, (areaWidth - cols) / areaWidth));
+    const targetCwd = cwd || sidebarPane.cwd || process.cwd();
+    const newPaneId = h.splitLeft(sidebarPane.pane_id, ratio, targetCwd);
+    if (newPaneId) {
+      h.focusPane(newPaneId);
+      return { action: 'fallback-terminal', pane: newPaneId, tab: tabId, cwd: targetCwd };
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function reconcileTab({ tabId, panes = h.paneList(), cols = defaultCols() }) {
+  const sidebars = sidebarsIn(panes, tabId);
+  if (!sidebars.length) return null;
+  const sidebar = sidebars[0];
+  const inTab = panes.filter((p) => p.tab_id === tabId);
+  const workPanes = inTab.filter((p) => !isOurs(p));
+
+  if (workPanes.length === 0) {
+    return fallbackTerminal({ tabId, sidebarPane: sidebar, cwd: sidebar.cwd, cols });
+  }
+
+  return maintainSidebarSize(tabId, sidebar.pane_id, cols);
+}
+
 module.exports = {
+  BAR_COLS,
   EXPANDED_COLS,
   RESTORED_LABEL,
   defaultCols,
@@ -107,4 +163,7 @@ module.exports = {
   orphansIn,
   onRightEdge,
   adopt,
+  maintainSidebarSize,
+  fallbackTerminal,
+  reconcileTab,
 };

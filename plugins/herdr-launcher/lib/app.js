@@ -68,6 +68,25 @@ class App {
     this.setStatus(`${message}  [y/n]`, 'error');
   }
 
+  prompt(message, options = {}, onDone = () => {}) {
+    let opts = options;
+    let doneCb = onDone;
+    if (typeof options === 'function') {
+      doneCb = options;
+      opts = {};
+    }
+    this.promptState = {
+      message,
+      buffer: (opts && opts.defaultValue) || '',
+      secret: Boolean(opts && opts.secret),
+      onDone: doneCb,
+    };
+    const display = this.promptState.secret
+      ? '*'.repeat(this.promptState.buffer.length)
+      : this.promptState.buffer;
+    this.setStatus(`${message}: ${display}█`, 'info');
+  }
+
   get statusColor() {
     return this.statusKind === 'error' ? A.red : this.statusKind === 'ok' ? A.green : A.gray;
   }
@@ -139,10 +158,51 @@ class App {
 
   handleKey(key) {
     if (key && key.mouse) {
-
-      return this.pending ? undefined : this.handleMouse(key.mouse);
+      return this.pending || this.promptState ? undefined : this.handleMouse(key.mouse);
     }
     if (key === 'ctrl-c') return this.quit();
+
+    if (this.promptState) {
+      const { message, onDone, secret } = this.promptState;
+      if (key === 'enter') {
+        const val = this.promptState.buffer;
+        this.promptState = null;
+        this.setStatus('');
+        onDone(val);
+        return this.render();
+      }
+      if (key === 'escape') {
+        this.promptState = null;
+        this.setStatus('cancelled');
+        onDone(null);
+        return this.render();
+      }
+      if (key === 'backspace') {
+        this.promptState.buffer = this.promptState.buffer.slice(0, -1);
+        const display = secret ? '*'.repeat(this.promptState.buffer.length) : this.promptState.buffer;
+        this.setStatus(`${message}: ${display}█`, 'info');
+        return this.render();
+      }
+      if (
+        typeof key === 'string' &&
+        !key.startsWith('\x1b') &&
+        key !== 'up' &&
+        key !== 'down' &&
+        key !== 'left' &&
+        key !== 'right' &&
+        key !== 'pageup' &&
+        key !== 'pagedown' &&
+        key !== 'home' &&
+        key !== 'end' &&
+        key !== 'tab'
+      ) {
+        this.promptState.buffer += key;
+        const display = secret ? '*'.repeat(this.promptState.buffer.length) : this.promptState.buffer;
+        this.setStatus(`${message}: ${display}█`, 'info');
+        return this.render();
+      }
+      return undefined;
+    }
 
     if (this.pending) {
       const { onYes } = this.pending;
@@ -242,6 +302,26 @@ class App {
           this.view.refresh(this, { force: true });
         }
         this.render();
+      }
+
+      if (this.paneId && !this.hasNeighbour()) {
+        try {
+          const panes = h.paneList();
+          const self = panes.find((p) => p.pane_id === this.paneId);
+          if (self) {
+            const inTab = panes.filter((p) => p.tab_id === self.tab_id);
+            if (inTab.length === 1 && inTab[0].pane_id === this.paneId) {
+              const dock = require('./dock');
+              dock.fallbackTerminal({
+                tabId: self.tab_id,
+                sidebarPane: self,
+                cwd: this.ctx ? this.ctx.cwd : process.cwd(),
+                cols: dock.defaultCols(),
+              });
+              this.render();
+            }
+          }
+        } catch (_) {}
       }
     }, 1000);
     this._liveTimer.unref();

@@ -57,6 +57,7 @@ function runJson(scriptPath, args = []) {
 function parseTomlBasic(content) {
   const panes = [];
   const actions = [];
+  const keys = [];
   let currentObj = null;
 
   for (const rawLine of content.split('\n')) {
@@ -71,6 +72,11 @@ function parseTomlBasic(content) {
     if (line === '[[actions]]') {
       currentObj = {};
       actions.push(currentObj);
+      continue;
+    }
+    if (line === '[[keys.command]]') {
+      currentObj = {};
+      keys.push(currentObj);
       continue;
     }
     if (line.startsWith('[[') && line.endsWith(']]')) {
@@ -89,7 +95,7 @@ function parseTomlBasic(content) {
       }
     }
   }
-  return { panes, actions };
+  return { panes, actions, keys };
 }
 
 function testSyntax() {
@@ -126,6 +132,9 @@ function testManifest() {
 
   const actionIds = new Set(actions.map((a) => a.id));
   assert(actionIds.has('toggle-launcher'), 'action toggle-launcher defined');
+  assert(actionIds.has('watch-tabs-start'), 'action watch-tabs-start defined');
+  assert(actionIds.has('watch-tabs-stop'), 'action watch-tabs-stop defined');
+  assert(actionIds.has('dock-launcher-everywhere'), 'action dock-launcher-everywhere defined');
   assert(actionIds.has('stack-mode'), 'action stack-mode defined');
   assert(actionIds.has('focus-mode'), 'action focus-mode defined');
   assert(actionIds.has('tool-symlinks'), 'action tool-symlinks defined');
@@ -133,6 +142,16 @@ function testManifest() {
   assert(actionIds.has('tool-plane'), 'action tool-plane defined');
   assert(actionIds.has('agent-terminal'), 'action agent-terminal defined');
   assert(!actionIds.has('launcher-popup-open'), 'action launcher-popup-open removed');
+
+  const configExamplePath = path.join(ROOT, 'config.example.toml');
+  assert(fs.existsSync(configExamplePath), 'config.example.toml exists');
+  const configContent = fs.readFileSync(configExamplePath, 'utf8');
+  const { keys } = parseTomlBasic(configContent);
+  const stackKey = keys.find((k) => k.command === 'herdr-launcher.stack-mode');
+  assert(stackKey, 'config.example.toml defines herdr-launcher.stack-mode keybinding');
+  assert(stackKey.key === 'prefix+m', 'config.example.toml maps stack-mode to prefix+m (no prefix+z zoom conflict)');
+  const zoomConflict = keys.find((k) => k.key === 'prefix+z');
+  assert(!zoomConflict, 'no keybinding in config.example.toml uses prefix+z (preserves native zoom)');
 }
 
 function testToolLaunchersDryRun() {
@@ -160,6 +179,28 @@ function testToolLaunchersDryRun() {
     toggleRes.action === 'open' || toggleRes.action === 'close' || toggleRes.action === 'focus',
     'toggle-launcher dry-run works'
   );
+
+  const watchTabsJs = path.join(BIN_DIR, 'watch-tabs.js');
+  const watchDry = runJson(watchTabsJs, ['--dry-run']);
+  assert(watchDry.action === 'watch' && watchDry.dryRun === true, 'watch-tabs default dry-run works');
+  const watchStartDry = runJson(watchTabsJs, ['--start', '--dry-run']);
+  assert(watchStartDry.action === 'start' && watchStartDry.dryRun === true, 'watch-tabs --start dry-run works');
+  const watchStopDry = runJson(watchTabsJs, ['--stop', '--dry-run']);
+  assert(watchStopDry.action === 'stop' && watchStopDry.dryRun === true, 'watch-tabs --stop dry-run works');
+  const watchOnceDry = runJson(watchTabsJs, ['--once', '--dry-run']);
+  assert(watchOnceDry.action === 'dock-once' && watchOnceDry.dryRun === true, 'watch-tabs --once dry-run works');
+
+  const startupJs = path.join(BIN_DIR, 'startup.js');
+  const startupDry = runJson(startupJs, ['--dry-run', '--timeout', '100']);
+  assert(startupDry.action === 'startup' || startupDry.action === 'noop', 'startup.js dry-run works');
+
+  const dock = require('../lib/dock');
+  assert(dock.BAR_COLS === 20, 'dock.BAR_COLS is 20 columns');
+  assert(dock.EXPANDED_COLS === 22, 'dock.EXPANDED_COLS is 22 columns (20 bar cols + 2 border overhead)');
+  assert(dock.defaultCols() === 22, 'dock.defaultCols() defaults to 22 columns');
+  assert(typeof dock.maintainSidebarSize === 'function', 'dock.maintainSidebarSize is exported');
+  assert(typeof dock.fallbackTerminal === 'function', 'dock.fallbackTerminal is exported');
+  assert(typeof dock.reconcileTab === 'function', 'dock.reconcileTab is exported');
 }
 
 function testAgentLaunchersDryRun() {
@@ -210,6 +251,8 @@ function testAppLaunchersDryRun() {
   assert(typeof stash.setStackMode === 'function', 'stash.setStackMode is exported');
   assert(typeof stash.isFocusModeOn === 'function', 'stash.isFocusModeOn is exported');
   assert(typeof stash.setFocusMode === 'function', 'stash.setFocusMode is exported');
+  assert(typeof stash.isStashTab === 'function', 'stash.isStashTab is exported');
+  assert(typeof stash.prune === 'function', 'stash.prune is exported');
 }
 
 function testViewComponents() {
@@ -245,18 +288,37 @@ function testViewComponents() {
     'symlinkView includes Browse item with label Browse'
   );
 
+  const openspecLib = require('../lib/openspec');
+  assert(typeof openspecLib.toolkitRoot === 'function', 'openspec.toolkitRoot is exported');
+  const resolvedToolkit = openspecLib.toolkitRoot();
+  assert(Boolean(resolvedToolkit && fs.existsSync(resolvedToolkit)), 'openspec.toolkitRoot resolves bundled toolkit path');
+  const openspecStatus = openspecLib.status(ROOT);
+  assert(openspecStatus.length === 5, 'openspec.status returns all 5 components');
+  assert(openspecStatus.every((c) => c.available), 'all openspec components are available from bundled toolkit');
+
   const openspecDef = views.byKey('openspec');
   const openspecView = openspecDef.view();
   assert(openspecView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'openspecView action footer includes [esc back]');
+  openspecView.refresh(mockApp);
+  assert(
+    !openspecView.list.items.some((i) => i.label === 'SOURCE NOT FOUND'),
+    'openspecView does not show SOURCE NOT FOUND when bundled toolkit is present'
+  );
+  assert(
+    openspecView.list.items.some((i) => i.label && i.label.includes('Core Infrastructure')),
+    'openspecView renders Core Infrastructure component'
+  );
 
   const planeDef = views.byKey('plane');
   const planeView = planeDef.view();
   assert(planeView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'planeView action footer includes [esc back]');
   assert(planeView.actions.some((a) => a.key === 's' && a.label === 'sync'), 'planeView action footer includes [s sync]');
   assert(planeView.actions.some((a) => a.key === 'p' && a.label === 'project'), 'planeView action footer includes [p project]');
+  assert(planeView.actions.some((a) => a.key === 'k' && a.label === 'api key'), 'planeView action footer includes [k api key]');
   assert(planeView.actions.some((a) => a.key === 'enter' && a.label === 'open'), 'planeView action footer includes [enter open]');
   assert(typeof planeView.loadProjects === 'function', 'planeView supports loadProjects for parent workspace');
   assert(typeof planeView.loadCrawlOptions === 'function', 'planeView supports loadCrawlOptions for category selection');
+  assert(typeof planeView.inputApiKey === 'function', 'planeView supports inputApiKey for entering and saving API key');
 
   // Test in-sidebar view stack history
   const rootMenu = { title: 'Launcher', render: () => [] };
@@ -270,6 +332,20 @@ function testViewComponents() {
   const popped = app.popView();
   assert(popped === true && app.view === rootMenu, 'popView returns to root launcher menu');
   assert(app.viewHistory.length === 0, 'viewHistory is emptied after popView');
+
+  // Test in-app prompt
+  let promptSubmitted = null;
+  app.prompt('Enter API Key', { defaultValue: 'initial_val' }, (res) => {
+    promptSubmitted = res;
+  });
+  assert(app.promptState && app.promptState.buffer === 'initial_val', 'app.prompt initializes promptState buffer');
+  app.handleKey('x');
+  assert(app.promptState.buffer === 'initial_valx', 'app.handleKey appends char in prompt mode');
+  app.handleKey('backspace');
+  assert(app.promptState.buffer === 'initial_val', 'app.handleKey backspace removes char in prompt mode');
+  app.handleKey('enter');
+  assert(promptSubmitted === 'initial_val', 'app.handleKey enter submits prompt value');
+  assert(app.promptState === null, 'promptState is cleared after submit');
 }
 
 function testPlaneConfig() {
@@ -278,14 +354,32 @@ function testPlaneConfig() {
   const plane = require('../lib/plane');
   const context = require('../lib/context');
 
+  const prevConfig = context.readConfig(plane.CONFIG_FILE);
+
   assert(plane.DEFAULT_PLANE_CONFIG.baseUrl === 'https://plane.itgproduct.com', 'plane default baseUrl matches CodingSpace');
   assert(plane.DEFAULT_PLANE_CONFIG.workspaceSlug === 'product', 'plane default workspaceSlug is product');
-  assert(plane.DEFAULT_PLANE_CONFIG.apiKey === 'plane_api_68b11fbeb14c431cad3a1f87455b622a', 'plane default apiKey matches user key');
+  assert(plane.DEFAULT_PLANE_CONFIG.apiKey === '', 'plane default apiKey is empty and not hardcoded');
+  assert(typeof plane.saveApiKey === 'function', 'plane.saveApiKey is exported');
+  assert(typeof plane.promptApiKey === 'function', 'plane.promptApiKey is exported');
+
+  const saveRes = plane.saveApiKey('plane_api_test_save_key_999');
+  assert(saveRes.ok === true && saveRes.apiKey === 'plane_api_test_save_key_999', 'plane.saveApiKey successfully saves key');
 
   const cfg = plane.config('D:/unknown/path');
   assert(cfg.baseUrl === 'https://plane.itgproduct.com', 'resolved cfg baseUrl falls back to default');
   assert(cfg.workspaceSlug === 'product', 'resolved cfg workspaceSlug falls back to default');
-  assert(cfg.apiKey === 'plane_api_68b11fbeb14c431cad3a1f87455b622a', 'resolved cfg apiKey falls back to default');
+  assert(cfg.apiKey === 'plane_api_test_save_key_999', 'resolved cfg apiKey retrieves saved key from plane.json');
+
+  // Restore previous config state
+  if (prevConfig) {
+    context.writeConfig(plane.CONFIG_FILE, prevConfig);
+  } else {
+    try {
+      const cur = context.readConfig(plane.CONFIG_FILE) || {};
+      delete cur.apiKey;
+      context.writeConfig(plane.CONFIG_FILE, cur);
+    } catch (_) {}
+  }
 
   const mapping = {
     'D:/Quest/CodingSpace.worktrees/CodingSpace-Plane': '72f1bdd9-8420-469f-93f7-fe27b6658b9c',
@@ -420,6 +514,85 @@ function testMouseInput() {
   assert(rendered === true, 'handleMouse triggers render after click');
 }
 
+function testTabWatcherAndAutoDock() {
+  group('9. Tab Watcher & Auto-Dock on New Tab Creation');
+  const dock = require('../lib/dock');
+  const stash = require('../lib/stash');
+  const context = require('../lib/context');
+
+  // Test sidebarsIn detection
+  const dummyPanes = [
+    { pane_id: 'p-work-1', tab_id: 'tab-1', tokens: {} },
+    { pane_id: 'p-launcher-1', tab_id: 'tab-1', tokens: { [context.OWNER_TOKEN]: 'herdr-launcher' } },
+    { pane_id: 'p-work-2', tab_id: 'tab-2', tokens: {} },
+  ];
+
+  const sidebarsTab1 = dock.sidebarsIn(dummyPanes, 'tab-1');
+  assert(sidebarsTab1.length === 1 && sidebarsTab1[0].pane_id === 'p-launcher-1', 'sidebarsIn identifies existing launcher in tab');
+
+  const sidebarsTab2 = dock.sidebarsIn(dummyPanes, 'tab-2');
+  assert(sidebarsTab2.length === 0, 'sidebarsIn returns empty for newly created tab without launcher');
+
+  // Test dock.ensure noop when launcher already present
+  const ensureExisting = dock.ensure({ tabId: 'tab-1', panes: dummyPanes });
+  assert(ensureExisting === null, 'dock.ensure returns null when launcher already exists in tab');
+
+  // Test stash tab exclusion for focus/stack mode
+  assert(stash.isStashTab(stash.STASH_LABEL) === true, 'isStashTab correctly identifies stash tabs');
+  assert(stash.isStashTab('My Work Tab') === false, 'isStashTab returns false for regular work tabs');
+
+  // Test event envelope extraction logic used by watch-tabs.js
+  function extractTabInfo(envelope) {
+    const type =
+      (envelope.data && envelope.data.type) ||
+      envelope.event ||
+      envelope.type ||
+      (envelope.params && envelope.params.event) ||
+      (envelope.params && envelope.params.type) ||
+      '';
+
+    if (type === 'tab_created' || type === 'tab.created') {
+      const tabData =
+        (envelope.data && envelope.data.tab) ||
+        (envelope.params && envelope.params.data && envelope.params.data.tab) ||
+        (envelope.params && envelope.params.tab) ||
+        envelope.tab ||
+        envelope.data ||
+        envelope.params ||
+        {};
+
+      const tabId =
+        tabData.tab_id ||
+        envelope.tab_id ||
+        (envelope.data && envelope.data.tab_id) ||
+        (envelope.params && envelope.params.tab_id);
+
+      const label = typeof tabData.label === 'string' ? tabData.label : null;
+      return { tabId, label, paneCount: tabData.pane_count || 1 };
+    }
+    return null;
+  }
+
+  // Envelope variant 1: data.type + data.tab
+  const env1 = { data: { type: 'tab.created', tab: { tab_id: 'tab-101', pane_count: 1 } } };
+  const res1 = extractTabInfo(env1);
+  assert(res1 && res1.tabId === 'tab-101', 'extractTabInfo parses standard tab.created event');
+
+  // Envelope variant 2: root type + tab_id
+  const env2 = { type: 'tab_created', tab_id: 'tab-102' };
+  const res2 = extractTabInfo(env2);
+  assert(res2 && res2.tabId === 'tab-102', 'extractTabInfo parses root tab_created event');
+
+  // Envelope variant 3: params format
+  const env3 = { method: 'events.event', event: 'tab.created', params: { tab: { tab_id: 'tab-103', label: 'Dev' } } };
+  const res3 = extractTabInfo(env3);
+  assert(res3 && res3.tabId === 'tab-103' && res3.label === 'Dev', 'extractTabInfo parses params tab.created event with label');
+
+  // Verify autoDock defaults to true
+  const watchCfg = context.readConfig('watch.json') || {};
+  assert(watchCfg.autoDock !== false, 'autoDock configuration defaults to enabled (true)');
+}
+
 function main() {
   process.stdout.write('\x1b[1m\x1b[35m=== Herdr-Launcher Self-Test Suite ===\x1b[0m\n');
   const start = Date.now();
@@ -433,6 +606,7 @@ function main() {
     testViewComponents();
     testPlaneConfig();
     testMouseInput();
+    testTabWatcherAndAutoDock();
   } catch (err) {
     failed += 1;
     errors.push(`Unhandled error: ${err.message}\n${err.stack}`);

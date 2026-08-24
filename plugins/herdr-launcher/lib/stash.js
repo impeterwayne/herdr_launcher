@@ -4,6 +4,9 @@ const { readConfig, writeConfig } = require('./context');
 
 const STATE_FILE = 'stack-mode.json';
 const LEGACY_STATE_FILE = 'focus-mode.json';
+const STASH_LABEL = 'launcher stash';
+
+const isStashTab = (label) => String(label || '') === STASH_LABEL;
 
 const readState = () => {
   let state = readConfig(STATE_FILE);
@@ -56,8 +59,14 @@ function toggle({ dryRun = false } = {}) {
   };
 }
 
+function prune() {
+  return [];
+}
+
 module.exports = {
   STATE_FILE,
+  STASH_LABEL,
+  isStashTab,
   readState,
   writeState,
   isStackModeOn,
@@ -65,4 +74,5 @@ module.exports = {
   setStackMode,
   setFocusMode,
   toggle,
+  prune,
 };

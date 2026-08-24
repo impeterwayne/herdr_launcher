@@ -2,6 +2,7 @@
 
 const h = require('./herdr');
 const { isOurs, toolOf } = require('./context');
+const { defaultCols } = require('./dock');
 
 const isFocusModeOn = (tabId, anchorPaneId = null) => {
   try {
@@ -22,13 +23,13 @@ function resetFibonacciSplits(tabId, anchorPaneId) {
     const isSidebar = (p) => isOurs(p);
     const sidebarPane = panes.find(isSidebar);
 
-    // 1. Maintain Sidebar Split at 36 columns
+    // 1. Maintain Sidebar Split at default columns
     if (sidebarPane) {
       const sidebarSplit = layout.splits.find(
         (s) => s.direction === 'right' && s.rect.x === layout.area.x && s.rect.width === layout.area.width
       );
       if (sidebarSplit) {
-        const targetRatio = Math.max(0.1, Math.min(0.9, (layout.area.width - 36) / layout.area.width));
+        const targetRatio = Math.max(0.1, Math.min(0.9, (layout.area.width - defaultCols()) / layout.area.width));
         const diff = Number((targetRatio - sidebarSplit.ratio).toFixed(4));
         if (Math.abs(diff) >= 0.02) {
           const dir = diff > 0 ? 'right' : 'left';
