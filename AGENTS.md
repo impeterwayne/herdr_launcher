@@ -16,11 +16,11 @@ Instructions and guidelines for AI coding agents implementing features and maint
   ```
 - When adding a new tool, action, or agent capability, add corresponding assertions to `plugins/herdr-launcher/test/self-test.js` covering syntax, manifest declarations, and `--dry-run` outputs.
 
-### Rule 2: Single Right-Docked Sidebar for All Tools (No Popups)
-- All launcher capabilities and workspace tools (**Symlinks**, **OpenSpec setup**, **Plane tasks**) operate inside the right-docked sidebar (`launcher-sidebar`, `placement = "split"`).
-- **No popups are used by this plugin**.
-- In-place navigation inside the sidebar allows seamless transitions between the main menu and workspace tool subviews, with `esc` / `[esc back]` returning to the launcher menu.
-- Launch/focus tools in the sidebar via `herdr-launcher.tool-<key>` or `node bin/tool-launch.js <tool-key>`.
+### Rule 2: Right-Docked Sidebar for Main Launcher, Modal Popups for Workspace Tools
+- The main launcher menu operates inside the right-docked sidebar (`launcher-sidebar`, `placement = "split"`).
+- Workspace tools (**Symlinks**, **OpenSpec setup**, **Plane tasks**) open as focused modal popups (`symlinks-popup`, `openspec-popup`, `plane-popup`, `placement = "popup"`).
+- Tool popups close immediately on `esc` / `[esc close]` or `q`.
+- Launch tools via `herdr-launcher.tool-<key>` or `node bin/tool-launch.js <tool-key>`.
 
 ### Rule 3: Support `--dry-run` on All CLI Entrypoints
 - Every command script under `plugins/herdr-launcher/bin/` (`tool-launch.js`, `agent-launch.js`, `app-open.js`, `stack-mode.js`, `focus-mode.js`, `startup.js`, `toggle-launcher.js`, etc.) **MUST** support the `--dry-run` flag.

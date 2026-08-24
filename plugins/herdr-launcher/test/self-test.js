@@ -116,7 +116,7 @@ function testSyntax() {
 }
 
 function testManifest() {
-  group('2. Manifest Structure & Sidebar-Only Configuration');
+  group('2. Manifest Structure & Popup Configurations');
   assert(fs.existsSync(MANIFEST_PATH), 'herdr-plugin.toml exists');
   const content = fs.readFileSync(MANIFEST_PATH, 'utf8');
   const { panes, actions } = parseTomlBasic(content);
@@ -124,11 +124,12 @@ function testManifest() {
   const paneIds = new Map(panes.map((p) => [p.id, p]));
   assert(paneIds.has('launcher-sidebar'), 'launcher-sidebar pane defined');
   assert(paneIds.get('launcher-sidebar')?.placement === 'split', 'launcher-sidebar has placement = split');
-  assert(panes.length === 1, 'only launcher-sidebar pane defined in manifest (no popups)');
-  assert(!paneIds.has('launcher-popup'), 'launcher-popup pane removed');
-  assert(!paneIds.has('symlinks-popup'), 'symlinks-popup pane removed');
-  assert(!paneIds.has('openspec-popup'), 'openspec-popup pane removed');
-  assert(!paneIds.has('plane-popup'), 'plane-popup pane removed');
+  assert(paneIds.has('symlinks-popup'), 'symlinks-popup pane defined');
+  assert(paneIds.get('symlinks-popup')?.placement === 'popup', 'symlinks-popup has placement = popup');
+  assert(paneIds.has('openspec-popup'), 'openspec-popup pane defined');
+  assert(paneIds.get('openspec-popup')?.placement === 'popup', 'openspec-popup has placement = popup');
+  assert(paneIds.has('plane-popup'), 'plane-popup pane defined');
+  assert(paneIds.get('plane-popup')?.placement === 'popup', 'plane-popup has placement = popup');
 
   const actionIds = new Set(actions.map((a) => a.id));
   assert(actionIds.has('toggle-launcher'), 'action toggle-launcher defined');
@@ -141,7 +142,6 @@ function testManifest() {
   assert(actionIds.has('tool-openspec'), 'action tool-openspec defined');
   assert(actionIds.has('tool-plane'), 'action tool-plane defined');
   assert(actionIds.has('agent-terminal'), 'action agent-terminal defined');
-  assert(!actionIds.has('launcher-popup-open'), 'action launcher-popup-open removed');
 
   const configExamplePath = path.join(ROOT, 'config.example.toml');
   assert(fs.existsSync(configExamplePath), 'config.example.toml exists');
@@ -154,24 +154,24 @@ function testManifest() {
   assert(!zoomConflict, 'no keybinding in config.example.toml uses prefix+z (preserves native zoom)');
 }
 
-function testToolLaunchersDryRun() {
-  group('3. Workspace Tool & Sidebar Launchers (Dry Run)');
+function testToolPopupsDryRun() {
+  group('3. Workspace Tool Popup Launchers (Dry Run)');
   const toolLaunchJs = path.join(BIN_DIR, 'tool-launch.js');
 
   const symlinkRes = runJson(toolLaunchJs, ['symlinks', '--dry-run']);
-  assert(symlinkRes.action === 'open' || symlinkRes.action === 'focus', 'symlinks launch reports action = open/focus');
+  assert(symlinkRes.action === 'open', 'symlinks launch reports action = open');
   assert(symlinkRes.tool === 'symlinks', 'symlinks launch specifies tool = symlinks');
-  assert(symlinkRes.mode === 'sidebar' || symlinkRes.target === 'sidebar', 'symlinks launch targets sidebar');
+  assert(symlinkRes.entrypoint === 'symlinks-popup', 'symlinks launch targets symlinks-popup');
 
   const openspecRes = runJson(toolLaunchJs, ['openspec', '--dry-run']);
-  assert(openspecRes.action === 'open' || openspecRes.action === 'focus', 'openspec launch reports action = open/focus');
+  assert(openspecRes.action === 'open', 'openspec launch reports action = open');
   assert(openspecRes.tool === 'openspec', 'openspec launch specifies tool = openspec');
-  assert(openspecRes.mode === 'sidebar' || openspecRes.target === 'sidebar', 'openspec launch targets sidebar');
+  assert(openspecRes.entrypoint === 'openspec-popup', 'openspec launch targets openspec-popup');
 
   const planeRes = runJson(toolLaunchJs, ['plane', '--dry-run']);
-  assert(planeRes.action === 'open' || planeRes.action === 'focus', 'plane launch reports action = open/focus');
+  assert(planeRes.action === 'open', 'plane launch reports action = open');
   assert(planeRes.tool === 'plane', 'plane launch specifies tool = plane');
-  assert(planeRes.mode === 'sidebar' || planeRes.target === 'sidebar', 'plane launch targets sidebar');
+  assert(planeRes.entrypoint === 'plane-popup', 'plane launch targets plane-popup');
 
   const toggleLauncherJs = path.join(BIN_DIR, 'toggle-launcher.js');
   const toggleRes = runJson(toggleLauncherJs, ['--dry-run']);
@@ -256,15 +256,16 @@ function testAppLaunchersDryRun() {
 }
 
 function testViewComponents() {
-  group('6. View Registry, Action Footers & In-Sidebar Navigation');
+  group('6. View Registry & Action Footers');
   const views = require('../lib/views');
   const { App } = require('../lib/app');
 
   assert(Array.isArray(views.TOOLS) && views.TOOLS.length === 3, 'views.TOOLS contains 3 workspace tools');
 
   const symlinkDef = views.byKey('symlinks');
+  assert(symlinkDef?.popupEntrypoint === 'symlinks-popup', 'symlinks has popupEntrypoint symlinks-popup');
   const symlinkView = symlinkDef.view();
-  assert(symlinkView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'symlinkView action footer includes [esc back]');
+  assert(symlinkView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'symlinkView action footer includes [esc close]');
   assert(symlinkView.actions.some((a) => a.key === 'b' && a.label === 'browse'), 'symlinkView action footer includes [b browse]');
   assert(symlinkView.actions.some((a) => a.key === 'e' && a.label === 'explore'), 'symlinkView action footer includes [e explore]');
   assert(symlinkView.actions.some((a) => a.key === 'd' && a.label === 'delete'), 'symlinkView action footer includes [d delete]');
@@ -297,8 +298,9 @@ function testViewComponents() {
   assert(openspecStatus.every((c) => c.available), 'all openspec components are available from bundled toolkit');
 
   const openspecDef = views.byKey('openspec');
+  assert(openspecDef?.popupEntrypoint === 'openspec-popup', 'openspec has popupEntrypoint openspec-popup');
   const openspecView = openspecDef.view();
-  assert(openspecView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'openspecView action footer includes [esc back]');
+  assert(openspecView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'openspecView action footer includes [esc close]');
   openspecView.refresh(mockApp);
   assert(
     !openspecView.list.items.some((i) => i.label === 'SOURCE NOT FOUND'),
@@ -310,8 +312,9 @@ function testViewComponents() {
   );
 
   const planeDef = views.byKey('plane');
+  assert(planeDef?.popupEntrypoint === 'plane-popup', 'plane has popupEntrypoint plane-popup');
   const planeView = planeDef.view();
-  assert(planeView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'planeView action footer includes [esc back]');
+  assert(planeView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'planeView action footer includes [esc close]');
   assert(planeView.actions.some((a) => a.key === 's' && a.label === 'sync'), 'planeView action footer includes [s sync]');
   assert(planeView.actions.some((a) => a.key === 'p' && a.label === 'project'), 'planeView action footer includes [p project]');
   assert(planeView.actions.some((a) => a.key === 'k' && a.label === 'api key'), 'planeView action footer includes [k api key]');
@@ -320,7 +323,7 @@ function testViewComponents() {
   assert(typeof planeView.loadCrawlOptions === 'function', 'planeView supports loadCrawlOptions for category selection');
   assert(typeof planeView.inputApiKey === 'function', 'planeView supports inputApiKey for entering and saving API key');
 
-  // Test in-sidebar view stack history
+  // Test in-app prompt
   const rootMenu = { title: 'Launcher', render: () => [] };
   const subView = { title: 'SubView', render: () => [] };
   const app = new App({ view: () => rootMenu });
@@ -333,7 +336,6 @@ function testViewComponents() {
   assert(popped === true && app.view === rootMenu, 'popView returns to root launcher menu');
   assert(app.viewHistory.length === 0, 'viewHistory is emptied after popView');
 
-  // Test in-app prompt
   let promptSubmitted = null;
   app.prompt('Enter API Key', { defaultValue: 'initial_val' }, (res) => {
     promptSubmitted = res;
@@ -600,7 +602,7 @@ function main() {
   try {
     testSyntax();
     testManifest();
-    testToolLaunchersDryRun();
+    testToolPopupsDryRun();
     testAgentLaunchersDryRun();
     testAppLaunchersDryRun();
     testViewComponents();

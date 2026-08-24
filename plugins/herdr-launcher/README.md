@@ -135,14 +135,14 @@ node scripts/self-test.js
 
 ## Sidebar Controls & Navigation
 
-The launcher docks as a 20-column split on the right edge. Selecting any workspace tool transitions the sidebar in-place into that tool's subview.
+The launcher docks as a 20-column split on the right edge. Selecting any workspace tool opens a focused modal popup.
 
 | Input | Action |
 | :--- | :--- |
 | `↑` / `↓` or `j` / `k` | Move selection up / down |
-| `Enter` | Launch selected item / open tool subview |
-| `Esc` / `[esc back]` | Return from subview to main launcher menu |
-| `q` / `[q quit]` | Close sidebar pane (exits process if last pane in tab) |
+| `Enter` | Launch selected item / open tool popup |
+| `Esc` / `[esc close]` | Close tool popup or return from prompt |
+| `q` / `[q quit]` | Close pane / popup |
 | `r` / `[r reload]` | Refresh the active view |
 | `Click` | Focus row or activate footer action chip |
 | `Double-Click` | Execute selected item immediately |
@@ -171,7 +171,7 @@ Each press launches a new agent instance configured to bypass permission prompts
 ### Symlinks (`prefix+alt+l`)
 Scans sibling git worktrees and suggests links for heavy shared directories (`node_modules`, `build`, `dist`, `.gradle`, `vendor`, `target`, `.venv`).
 - Uses native junctions on Windows (requires no admin privileges or Developer Mode) and standard symlinks on Unix.
-- Action chips: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc back]`.
+- Action chips: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc close]`.
 - Custom link targets can be defined in `<config-dir>/symlinks.json`.
 
 ### OpenSpec (`prefix+alt+s`)

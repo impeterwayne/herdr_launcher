@@ -14,6 +14,7 @@ class App {
 
   constructor(options = {}) {
     this.options = options;
+    this.popup = Boolean(options.popup);
     this.paneId = options.paneId || null;
     this.screen = new Screen();
     this.view = null;
@@ -61,6 +62,7 @@ class App {
   activate(item) {
     if (!item || item.disabled || !item.run) return;
     item.run(this);
+    if (this.popup && item.closeAfter && !this.pending) this.quit();
   }
 
   confirm(message, onYes) {
@@ -223,7 +225,7 @@ class App {
         return this.quit();
       case 'escape':
         if (this.popView()) return undefined;
-        return this.options.escapeQuits ? this.quit() : undefined;
+        return this.popup || this.options.escapeQuits ? this.quit() : undefined;
       case 'up':
       case 'k':
         this.view.list.move(-1);
@@ -255,7 +257,7 @@ class App {
   quit() {
     this.running = false;
     this.screen.stop();
-    if (this.options.closesPane && this.paneId && this.hasNeighbour()) {
+    if (this.options.closesPane && !this.popup && this.paneId && this.hasNeighbour()) {
       h.detachedHerdr(['pane', 'close', this.paneId]);
     }
     process.exit(0);
@@ -292,39 +294,41 @@ class App {
       this.render();
     }
 
-    this._liveTimer = setInterval(() => {
-      if (!this.running || this.pending) return;
-      const prevCwd = this.ctx ? this.ctx.cwd : null;
-      this.refreshContext();
-      const cwdChanged = Boolean(this.ctx && this.ctx.cwd !== prevCwd);
-      if (cwdChanged) {
-        if (this.view && this.view.refresh) {
-          this.view.refresh(this, { force: true });
-        }
-        this.render();
-      }
-
-      if (this.paneId && !this.hasNeighbour()) {
-        try {
-          const panes = h.paneList();
-          const self = panes.find((p) => p.pane_id === this.paneId);
-          if (self) {
-            const inTab = panes.filter((p) => p.tab_id === self.tab_id);
-            if (inTab.length === 1 && inTab[0].pane_id === this.paneId) {
-              const dock = require('./dock');
-              dock.fallbackTerminal({
-                tabId: self.tab_id,
-                sidebarPane: self,
-                cwd: this.ctx ? this.ctx.cwd : process.cwd(),
-                cols: dock.defaultCols(),
-              });
-              this.render();
-            }
+    if (!this.popup) {
+      this._liveTimer = setInterval(() => {
+        if (!this.running || this.pending) return;
+        const prevCwd = this.ctx ? this.ctx.cwd : null;
+        this.refreshContext();
+        const cwdChanged = Boolean(this.ctx && this.ctx.cwd !== prevCwd);
+        if (cwdChanged) {
+          if (this.view && this.view.refresh) {
+            this.view.refresh(this, { force: true });
           }
-        } catch (_) {}
-      }
-    }, 1000);
-    this._liveTimer.unref();
+          this.render();
+        }
+
+        if (this.paneId && !this.hasNeighbour()) {
+          try {
+            const panes = h.paneList();
+            const self = panes.find((p) => p.pane_id === this.paneId);
+            if (self) {
+              const inTab = panes.filter((p) => p.tab_id === self.tab_id);
+              if (inTab.length === 1 && inTab[0].pane_id === this.paneId) {
+                const dock = require('./dock');
+                dock.fallbackTerminal({
+                  tabId: self.tab_id,
+                  sidebarPane: self,
+                  cwd: this.ctx ? this.ctx.cwd : process.cwd(),
+                  cols: dock.defaultCols(),
+                });
+                this.render();
+              }
+            }
+          } catch (_) {}
+        }
+      }, 1000);
+      this._liveTimer.unref();
+    }
 
     process.stdin.on('data', (chunk) => {
 

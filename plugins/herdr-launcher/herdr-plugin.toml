@@ -11,6 +11,30 @@ title = "Launcher"
 placement = "split"
 command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/launcher.js"];require(r+"/bin/launcher.js")']
 
+[[panes]]
+id = "symlinks-popup"
+title = "Symlinks"
+placement = "popup"
+width = 52
+height = "70%"
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","symlinks","--popup"];require(r+"/bin/tool-pane.js")']
+
+[[panes]]
+id = "openspec-popup"
+title = "OpenSpec setup"
+placement = "popup"
+width = 44
+height = "70%"
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","openspec","--popup"];require(r+"/bin/tool-pane.js")']
+
+[[panes]]
+id = "plane-popup"
+title = "Plane tasks"
+placement = "popup"
+width = 64
+height = "70%"
+command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","plane","--popup"];require(r+"/bin/tool-pane.js")']
+
 [[startup]]
 command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;require(r+"/bin/startup.js")']
 
@@ -53,19 +77,19 @@ command = ["node", "bin/focus-mode.js"]
 [[actions]]
 id = "tool-symlinks"
 title = "Symlinks"
-description = "Open the symlink manager in the launcher sidebar."
+description = "Open the symlink manager as a popup."
 command = ["node", "bin/tool-launch.js", "symlinks"]
 
 [[actions]]
 id = "tool-openspec"
 title = "OpenSpec setup"
-description = "Open the OpenSpec toolkit deployer in the launcher sidebar."
+description = "Open the OpenSpec toolkit deployer as a popup."
 command = ["node", "bin/tool-launch.js", "openspec"]
 
 [[actions]]
 id = "tool-plane"
 title = "Plane tasks"
-description = "Open the Plane issue list and task synchronizer in the launcher sidebar."
+description = "Open the Plane issue list and task synchronizer as a popup."
 command = ["node", "bin/tool-launch.js", "plane"]
 
 [[actions]]

@@ -144,14 +144,14 @@ Phím `prefix` mặc định là `ctrl+b`. Tất cả các phím tắt khởi ch
 
 ## Điều khiển & Điều hướng trên Sidebar
 
-Thanh bên hiển thị ở dạng chia khung 20 cột gắn cố định ở mép phải màn hình. Khi bạn chọn một công cụ không gian làm việc bất kỳ, sidebar sẽ chuyển tiếp trực tiếp (in-place) sang giao diện con của công cụ đó mà không tạo cửa sổ popup rườm rà.
+Thanh bên hiển thị ở dạng chia khung 20 cột gắn cố định ở mép phải màn hình. Khi bạn chọn một công cụ không gian làm việc bất kỳ, giao diện công cụ sẽ mở dưới dạng cửa sổ popup tập trung.
 
 | Thao tác | Hành động |
 | :--- | :--- |
 | `↑` / `↓` hoặc `j` / `k` | Di chuyển lựa chọn lên / xuống |
-| `Enter` | Khởi chạy mục đã chọn / Mở giao diện con của công cụ |
-| `Esc` / `[esc back]` | Quay lại menu launcher chính từ giao diện con |
-| `q` / `[q quit]` | Đóng thanh bên (thoát tiến trình nếu là pane cuối cùng trong tab) |
+| `Enter` | Khởi chạy mục đã chọn / Mở popup công cụ |
+| `Esc` / `[esc close]` | Đóng popup công cụ hoặc hủy hộp thoại |
+| `q` / `[q quit]` | Đóng thanh bên / popup |
 | `r` / `[r reload]` | Làm mới lại giao diện hiện tại |
 | `Click chuột` | Chọn dòng hoặc kích hoạt nút hành động (action chip) ở chân trang |
 | `Double-Click` | Thực thi ngay mục được chọn |
@@ -180,7 +180,7 @@ Mỗi lần nhấn phím sẽ khởi chạy một phiên agent mới được c�
 ### Symlinks (`prefix+alt+l`)
 Quét các git worktree liền kề và gợi ý liên kết các thư mục nặng dùng chung (`node_modules`, `build`, `dist`, `.gradle`, `vendor`, `target`, `.venv`).
 - Sử dụng **NTFS Junctions** nguyên bản trên Windows (không yêu cầu quyền Quản trị viên / Administrator hay bật Developer Mode) và **Symlinks** tiêu chuẩn trên Unix.
-- Các nút hành động: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc back]`.
+- Các nút hành động: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc close]`.
 - Bạn có thể khai báo thêm các đường dẫn liên kết tùy chỉnh trong tệp `<config-dir>/symlinks.json`.
 
 ### OpenSpec (`prefix+alt+s`)

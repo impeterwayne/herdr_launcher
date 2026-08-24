@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 'use strict';
 
-const path = require('node:path');
 const h = require('../lib/herdr');
-const dock = require('../lib/dock');
-const { isOurs } = require('../lib/context');
 const { byKey, TOOLS } = require('../lib/views');
+
+const PLUGIN = 'herdr-launcher';
 
 const argv = process.argv.slice(2);
 
@@ -25,78 +24,23 @@ if (!tool) {
   usage(1);
 }
 
+const entrypoint = tool.popupEntrypoint || `${tool.key}-popup`;
 const dryRun = argv.includes('--dry-run');
 
-function report(payload) {
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
-}
+const args = ['plugin', 'pane', 'open', '--plugin', PLUGIN, '--entrypoint', entrypoint];
+if (argv.includes('--no-focus')) args.push('--no-focus');
 
-function main() {
-  let panes = [];
-  try {
-    panes = h.paneList();
-  } catch (err) {
-    if (!dryRun) throw err;
+if (dryRun) {
+  process.stdout.write(
+    `${JSON.stringify({ action: 'open', tool: tool.key, entrypoint, command: [h.BIN, ...args] })}\n`
+  );
+} else {
+  const result = h.tryHerdr(args);
+  if (result === null) {
+    process.stderr.write(`could not open the ${tool.label} popup — is a herdr session running?\n`);
+    process.exit(1);
   }
-
-  const focused = panes.find((p) => p.focused) || panes[0] || null;
-  const inTab = focused ? panes.filter((p) => p.tab_id === focused.tab_id) : [];
-  const mine = inTab.filter(isOurs);
-
-  if (mine.length) {
-    const target = mine.find((p) => p.focused) || mine[0];
-    if (dryRun) {
-      return report({
-        action: 'focus',
-        tool: tool.key,
-        pane: target.pane_id,
-        target: 'sidebar',
-      });
-    }
-    h.focusPane(target.pane_id);
-    return report({ action: 'focused', tool: tool.key, pane: target.pane_id });
-  }
-
-  const avoid = mine.map((p) => p.pane_id);
-
-  if (dryRun) {
-    let target = null;
-    if (focused) {
-      try {
-        const layout = h.paneLayout(focused.pane_id);
-        target = dock.rightmostPane(layout, avoid);
-      } catch (_) {}
-    }
-    return report({
-      action: 'open',
-      tool: tool.key,
-      mode: 'sidebar',
-      target: target ? target.pane_id : null,
-      targetWidth: target ? target.rect.width : null,
-      wantCols: dock.defaultCols(),
-      command: dock.launchCommand({ view: tool.key }),
-      cwd: focused ? focused.cwd : process.cwd(),
-    });
-  }
-
-  if (!focused) {
-    throw new Error('no active pane available — is a herdr session running?');
-  }
-
-  const opened = dock.open({
-    anchorPane: focused.pane_id,
-    cwd: focused.cwd,
-    cols: dock.defaultCols(),
-    focus: true,
-    avoid,
-    view: tool.key,
-  });
-  return report({ action: 'opened', tool: tool.key, mode: 'sidebar', ...opened });
-}
-
-try {
-  main();
-} catch (err) {
-  process.stderr.write(`${err.message}\n`);
-  process.exit(1);
+  process.stdout.write(
+    `${JSON.stringify({ action: 'opened', tool: tool.key, entrypoint })}\n`
+  );
 }

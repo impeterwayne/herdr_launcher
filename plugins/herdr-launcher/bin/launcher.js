@@ -120,9 +120,10 @@ function buildMenuItems(app) {
       label: `${tool.menuLabel}…`,
       icon: icon(tool.iconKey),
       iconColor: sgr(tool.iconKey),
-      closeAfter: false,
+      closeAfter: true,
       run: (a) => {
-        a.setView(tool.view());
+        runHelper('tool-launch.js', [tool.key], paneEnv(a));
+        a.setStatus(`opening ${tool.label} popup…`, 'ok');
       },
     });
   }
@@ -146,21 +147,10 @@ function menuView() {
 
 requireTTY('launcher.js');
 
-const viewFlagIndex = argv.indexOf('--view');
-const initialViewKey = viewFlagIndex !== -1 ? argv[viewFlagIndex + 1] : null;
-const initialTool = initialViewKey ? byKey(initialViewKey) : null;
-
-const appInstance = new App({
+new App({
   view: menuView,
   actions: DEFAULT_ACTIONS,
   paneId: selfPaneId(),
   stamp: { name: OWNER_TOKEN, value: String(Math.floor(Date.now() / 1000)) },
   closesPane: true,
-});
-
-if (initialTool) {
-  appInstance.viewHistory = [menuView()];
-  appInstance.setView(initialTool.view(), { pushHistory: false });
-}
-
-appInstance.start();
+}).start();
