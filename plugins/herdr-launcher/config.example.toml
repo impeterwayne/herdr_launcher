@@ -1,32 +1,26 @@
 [[keys.command]]
 key = "prefix+l"
 type = "plugin_action"
-command = "herdr-launcher.launcher-popup-open"
-description = "launcher popup"
-
-[[keys.command]]
-key = "prefix+shift+l"
-type = "plugin_action"
 command = "herdr-launcher.toggle-launcher"
-description = "launcher sidebar"
+description = "toggle launcher sidebar"
 
 [[keys.command]]
 key = "prefix+alt+l"
 type = "plugin_action"
 command = "herdr-launcher.tool-symlinks"
-description = "symlinks (popup)"
+description = "symlinks"
 
 [[keys.command]]
 key = "prefix+alt+s"
 type = "plugin_action"
 command = "herdr-launcher.tool-openspec"
-description = "OpenSpec setup (popup)"
+description = "OpenSpec setup"
 
 [[keys.command]]
 key = "prefix+alt+p"
 type = "plugin_action"
 command = "herdr-launcher.tool-plane"
-description = "Plane tasks (popup)"
+description = "Plane tasks"
 
 [[keys.command]]
 key = "prefix+alt+a"

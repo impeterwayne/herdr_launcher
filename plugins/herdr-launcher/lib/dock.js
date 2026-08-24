@@ -26,9 +26,10 @@ function rightmostPane(layout, avoid = []) {
   return onEdge[0];
 }
 
-function launchCommand({ paneId, shim = false } = {}) {
+function launchCommand({ paneId, shim = false, view = null } = {}) {
   const args = [];
   if (paneId) args.push('--pane', paneId);
+  if (view) args.push('--view', view);
 
   if (process.argv.includes('--ascii-icons')) args.push('--ascii-icons');
   if (shim && process.platform === 'win32' && fs.existsSync(CMD_SHIM) && !CMD_SHIM.includes(' ')) {
@@ -37,7 +38,7 @@ function launchCommand({ paneId, shim = false } = {}) {
   return ['node', JS_ENTRY, ...args];
 }
 
-function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = false, avoid = [] }) {
+function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = false, avoid = [], view = null }) {
   const layout = h.paneLayout(anchorPane);
   const target = rightmostPane(layout, avoid);
   if (!target) throw new Error('no pane left to split for the sidebar');
@@ -50,7 +51,7 @@ function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = fals
   h.paneRename(paneId, RESTORED_LABEL);
 
   h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)), TOKEN_TTL_MS);
-  const command = launchCommand({ paneId, shim });
+  const command = launchCommand({ paneId, shim, view });
   h.paneRun(paneId, ...command);
   if (focus) h.focusPane(paneId);
   return { pane: paneId, ratio: Number(ratio.toFixed(4)), command, targetWidth: width };

@@ -9,6 +9,16 @@ plain CommonJS run by the system `node`, so there is no build step.
 
 ## Install
 
+### Prerequisites (Font)
+
+The launcher TUI and workspace tools use **Nerd Font v3+ glyphs** (FontAwesome, Material Design Icons, Codicons, Devicons) for icons. To prevent tofu boxes or missing symbols:
+
+1. **Download & Install**: Download a Nerd Font like [JetBrainsMono Nerd Font](https://www.nerdfonts.com/font-downloads) (or from [Nerd Fonts Releases](https://github.com/ryanoasis/nerd-fonts/releases)).
+2. **Set Terminal Font**: In your terminal emulator (e.g. Windows Terminal, WezTerm, Alacritty), configure the font face to **`JetBrainsMono NF`** or **`JetBrainsMono Nerd Font`**.
+3. **ASCII Fallback**: If you cannot install a patched font, pass `--ascii-icons` or add `{"style": "ascii"}` to `%APPDATA%\herdr\plugins\herdr-launcher\icons.json`.
+
+### Setup
+
 ```
 herdr plugin link D:\Quest\herdr_research\plugins\herdr-launcher
 ```
@@ -27,16 +37,15 @@ If a binding ever locks you out: `herdr config reset-keys`.
 
 | Key | Does |
 | :--- | :--- |
-| `prefix+l` | open the launcher popup (recommended) |
-| `prefix+shift+l` | toggle the docked sidebar (right edge) |
+| `prefix+l` | toggle the docked sidebar (right edge) |
 | `prefix+alt+a` | Antigravity CLI `--dangerously-skip-permissions` |
 | `prefix+alt+c` | Claude `--dangerously-skip-permissions` |
 | `prefix+alt+shift+c` | Codex `--dangerously-bypass-approvals-and-sandbox` |
 | `prefix+alt+o` | OpenCode `--auto` |
 | `prefix+alt+t` | Terminal, interactive pane in the layout |
-| `prefix+alt+l` | Symlinks popup |
-| `prefix+alt+s` | OpenSpec setup popup |
-| `prefix+alt+p` | Plane tasks popup |
+| `prefix+alt+l` | Symlinks tool |
+| `prefix+alt+s` | OpenSpec setup tool |
+| `prefix+alt+p` | Plane tasks tool |
 | `prefix+alt+v` | open VS Code here |
 | `prefix+alt+e` | open File Explorer here |
 
@@ -127,72 +136,31 @@ Details worth keeping in mind:
 * Going straight to the vendored binary skips codex's Node wrapper, whose only
   other job is exporting `CODEX_MANAGED_PACKAGE_ROOT` and `CODEX_MANAGED_BY_NPM`
   — the launcher passes both via `--env` so `codex` behaves as it does in a
-  shell.
-* `--env` on `pane split` / `tab create` is the only hook for this: herdr
-  launches the shell immediately, so there is no later moment to fix PATH in.
-
-## Popup
-
-The launcher's zero-width presentation, and the one to reach for first:
-
-```
-node bin/popup-launcher.js          # or the launcher-popup-open action
-```
-
-A popup is **not part of the split tree**, so herdr's ratio clamp never gets a
-say: it opens at exact cell dimensions (46 × 70% here, from the `[[panes]]`
-entry), takes nothing from the layout while it is closed, and is wide enough that
-icons sit next to full labels and hints. It is a session-modal singleton, so
-`esc` dismisses it, and launching an agent or an app closes it on the way out —
-leaving it up would only hide the thing it just started.
-
-```
- AGENTS · YOLO ────────────────────────
-  antigravity
-  claude
- 󰆍 codex
-  opencode
-  terminal only
-```
-
-**Why the command in the manifest is a `node -e` bootstrap.** herdr runs a plugin
-pane with the plugin root as its cwd but hands it as a `\\?\`-prefixed extended
-path, and node cannot resolve a RELATIVE script against that — it throws inside
-`node:fs` and exits 1. That, and not the program lookup, is what this README used
-to record as "herdr cannot spawn a relative `[[panes]]` command on Windows". An
-absolute script path works; the bootstrap strips the prefix instead, so the
-manifest stays machine-independent.
-
 ## Sidebar
-
-The docked alternative, for a launcher that sits there. `prefix+shift+a` docks it
-on the right edge of the focused tab as a 36-column list (`--cols` to change
-that). Press the key again while it is focused to close it; press it from
-elsewhere to focus it.
-
-One presentation, no modes: the pane is sized once by the split that creates it
-and never resizes itself afterwards.
-
+ 
+The launcher docks on the right edge of the focused tab as a 36-column list (`--cols` to change
+that). Press `prefix+l` to open/focus it; press it again while focused to close it.
+ 
+One presentation, no popups: the sidebar manages agent launches, app opening, and embeds
+workspace tools (Symlinks, OpenSpec setup, Plane tasks) with seamless in-place subview navigation.
+ 
 ```
-↑↓ / jk    move            ⏎          run selected
+↑↓ / jk    move            ⏎          run selected / open subview
 click      focus a row     wheel      scroll the list
 click ×2   run it          r          reload
-q          close the pane  y / n      answer a confirmation
+q          close / back    esc        close / back to launcher
+y / n      answer a confirmation
 ```
-
-`q` (and `[q quit]`, and `ctrl-c`) **closes the pane**, not just the process —
-the same end state as pressing `prefix+shift+a` in it. A launcher that only
-exited left its pane standing with a bare shell in it, holding a column of
-screen and an ownership token that lapses a minute later, so the next toggle
-docked a second sidebar beside the corpse. The close is fired
-detached, because `pane close` kills the pane that would be waiting for its
-reply. Two exceptions: the popup is closed by herdr itself when the process
-exits, and a sidebar that is **alone in its tab** only exits — closing the last
+ 
+When navigating into a workspace tool subview (like Symlinks or Plane), pressing `esc` or `[esc back]`
+returns smoothly to the main Launcher menu.
+ 
+`q` on the main menu (and `[q quit]`, and `ctrl-c`) **closes the pane**, not just the process —
+the same end state as toggling it closed. A sidebar that is **alone in its tab** only exits — closing the last
 pane in a tab is more than `q` was asked to do.
-
+ 
 The footer is that key table made clickable. Every view ends in a row of chips —
-`[⏎ run]  [r reload]  [q quit]` here, `[⏎ toggle]  [d delete]  [r reload]
-[q close]` in a symlinks pane — and clicking one feeds exactly that key back
+`[⏎ run]  [r reload]  [q quit]` on the main menu, `[⏎ link]  [b browse]  [e explore]  [d delete]  [r reload]  [esc back]` in Symlinks — and clicking one feeds exactly that key back
 through the same handler, so the mouse can never reach an action the keyboard
 cannot. Chips are the one place where a single click acts: a chip is already a
 named action, so it does not need the two-beat rule the list rows have. The bar
@@ -459,20 +427,18 @@ workspace/worktree/tab/pane set, and `on = "app.startup"` links with an
 `unknown event` warning and never fires. The entry uses the same `node -e`
 bootstrap as the popup pane, for the same extended-path reason.
 
-## Workspace tool popups
+## Workspace tools in the sidebar
 
-Symlinks, OpenSpec and Plane each open in a **session-modal popup**:
+Symlinks, OpenSpec and Plane each run directly within the launcher sidebar:
 
 ```
 node bin/tool-launch.js <symlinks|openspec|plane> [--dry-run]
 ```
 
-They open as popups with exact cell dimensions (52, 44, and 64 columns wide at 70% height),
-taking nothing from the layout while closed and leaving existing split trees untouched.
+When selected in the sidebar (or launched via shortcut), the sidebar transitions in-place to that tool's view. Pressing `esc` or `[esc back]` returns to the main launcher view.
 
-* **Popups are session-modal singletons with no pane id.** `esc` or `q` dismisses the popup.
-* **Context is preserved.** The popup resolves its repository worktree and cwd from the active pane context.
-* **Zero layout footprint.** No split resizing, no ratios to manage, and no orphaned panes.
+* **Embedded sidebar navigation.** In-place subviews preserve the split layout.
+* **Context is preserved.** The tool resolves its repository worktree and cwd from the active pane context.
 
 ### Symlinks
 
@@ -511,7 +477,7 @@ and default API key) and inherits `projectPlaneIds` from CodingSpace or local `.
 Project IDs are resolved automatically for the **parent workspace (herd root)** so all
 worktrees of that repository share the same Plane project ID while remaining distinct from
 other workspaces:
-1. **Interactive project switcher**: Press `p` in the Plane popup (or open Plane when no project is mapped yet) to browse and select a Plane project for the current parent workspace / herd.
+1. **Interactive project switcher**: Press `p` in the Plane view (or open Plane when no project is mapped yet) to browse and select a Plane project for the current parent workspace / herd.
 2. **Selective Crawling & Offline Evidence**:
    - Selecting a project (or pressing `s` / `[s sync]`) opens the **Crawl Task Selection** view, allowing you to choose which task types to crawl and inject:
      - `Backlog + Todo` (recommended for active sprints)
@@ -544,7 +510,6 @@ key works for both.
 Every helper works standalone, and each takes `--dry-run`:
 
 ```
-node bin/popup-launcher.js [--no-focus] [--dry-run]
 node bin/toggle-launcher.js [--cols 36] [--open|--close] [--no-watch] [--dry-run]
 node bin/watch-tabs.js [--start|--stop|--status|--once] [--cols 36]
 node bin/agent-launch.js <agent-key> [--tab] [--ratio 0.5] [--direction right|down] [--dry-run]

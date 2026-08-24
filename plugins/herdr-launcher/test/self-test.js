@@ -110,60 +110,56 @@ function testSyntax() {
 }
 
 function testManifest() {
-  group('2. Manifest Structure & Popup Configurations');
+  group('2. Manifest Structure & Sidebar-Only Configuration');
   assert(fs.existsSync(MANIFEST_PATH), 'herdr-plugin.toml exists');
   const content = fs.readFileSync(MANIFEST_PATH, 'utf8');
   const { panes, actions } = parseTomlBasic(content);
 
   const paneIds = new Map(panes.map((p) => [p.id, p]));
-  assert(paneIds.has('launcher-popup'), 'launcher-popup pane defined');
-  assert(paneIds.get('launcher-popup')?.placement === 'popup', 'launcher-popup has placement = popup');
-
-  assert(paneIds.has('symlinks-popup'), 'symlinks-popup pane defined');
-  assert(paneIds.get('symlinks-popup')?.placement === 'popup', 'symlinks-popup has placement = popup');
-  assert(paneIds.get('symlinks-popup')?.width === 52, 'symlinks-popup has width = 52');
-
-  assert(paneIds.has('openspec-popup'), 'openspec-popup pane defined');
-  assert(paneIds.get('openspec-popup')?.placement === 'popup', 'openspec-popup has placement = popup');
-  assert(paneIds.get('openspec-popup')?.width === 44, 'openspec-popup has width = 44');
-
-  assert(paneIds.has('plane-popup'), 'plane-popup pane defined');
-  assert(paneIds.get('plane-popup')?.placement === 'popup', 'plane-popup has placement = popup');
-  assert(paneIds.get('plane-popup')?.width === 64, 'plane-popup has width = 64');
+  assert(paneIds.has('launcher-sidebar'), 'launcher-sidebar pane defined');
+  assert(paneIds.get('launcher-sidebar')?.placement === 'split', 'launcher-sidebar has placement = split');
+  assert(panes.length === 1, 'only launcher-sidebar pane defined in manifest (no popups)');
+  assert(!paneIds.has('launcher-popup'), 'launcher-popup pane removed');
+  assert(!paneIds.has('symlinks-popup'), 'symlinks-popup pane removed');
+  assert(!paneIds.has('openspec-popup'), 'openspec-popup pane removed');
+  assert(!paneIds.has('plane-popup'), 'plane-popup pane removed');
 
   const actionIds = new Set(actions.map((a) => a.id));
+  assert(actionIds.has('toggle-launcher'), 'action toggle-launcher defined');
   assert(actionIds.has('stack-mode'), 'action stack-mode defined');
   assert(actionIds.has('focus-mode'), 'action focus-mode defined');
   assert(actionIds.has('tool-symlinks'), 'action tool-symlinks defined');
   assert(actionIds.has('tool-openspec'), 'action tool-openspec defined');
   assert(actionIds.has('tool-plane'), 'action tool-plane defined');
   assert(actionIds.has('agent-terminal'), 'action agent-terminal defined');
+  assert(!actionIds.has('launcher-popup-open'), 'action launcher-popup-open removed');
 }
 
-function testToolPopupsDryRun() {
-  group('3. Workspace Tool Popups (Dry Run)');
+function testToolLaunchersDryRun() {
+  group('3. Workspace Tool & Sidebar Launchers (Dry Run)');
   const toolLaunchJs = path.join(BIN_DIR, 'tool-launch.js');
 
   const symlinkRes = runJson(toolLaunchJs, ['symlinks', '--dry-run']);
-  assert(symlinkRes.action === 'open', 'symlinks launch reports action = open');
+  assert(symlinkRes.action === 'open' || symlinkRes.action === 'focus', 'symlinks launch reports action = open/focus');
   assert(symlinkRes.tool === 'symlinks', 'symlinks launch specifies tool = symlinks');
-  assert(symlinkRes.entrypoint === 'symlinks-popup', 'symlinks launch targets entrypoint symlinks-popup');
-  assert(Array.isArray(symlinkRes.command) && symlinkRes.command.includes('--entrypoint'), 'symlinks invokes herdr plugin pane open');
+  assert(symlinkRes.mode === 'sidebar' || symlinkRes.target === 'sidebar', 'symlinks launch targets sidebar');
 
   const openspecRes = runJson(toolLaunchJs, ['openspec', '--dry-run']);
-  assert(openspecRes.action === 'open', 'openspec launch reports action = open');
+  assert(openspecRes.action === 'open' || openspecRes.action === 'focus', 'openspec launch reports action = open/focus');
   assert(openspecRes.tool === 'openspec', 'openspec launch specifies tool = openspec');
-  assert(openspecRes.entrypoint === 'openspec-popup', 'openspec launch targets entrypoint openspec-popup');
+  assert(openspecRes.mode === 'sidebar' || openspecRes.target === 'sidebar', 'openspec launch targets sidebar');
 
   const planeRes = runJson(toolLaunchJs, ['plane', '--dry-run']);
-  assert(planeRes.action === 'open', 'plane launch reports action = open');
+  assert(planeRes.action === 'open' || planeRes.action === 'focus', 'plane launch reports action = open/focus');
   assert(planeRes.tool === 'plane', 'plane launch specifies tool = plane');
-  assert(planeRes.entrypoint === 'plane-popup', 'plane launch targets entrypoint plane-popup');
+  assert(planeRes.mode === 'sidebar' || planeRes.target === 'sidebar', 'plane launch targets sidebar');
 
-  const popupLauncherJs = path.join(BIN_DIR, 'popup-launcher.js');
-  const popupRes = runJson(popupLauncherJs, ['--dry-run']);
-  assert(popupRes.action === 'open', 'launcher popup reports action = open');
-  assert(popupRes.command.includes('launcher-popup'), 'launcher popup targets launcher-popup');
+  const toggleLauncherJs = path.join(BIN_DIR, 'toggle-launcher.js');
+  const toggleRes = runJson(toggleLauncherJs, ['--dry-run']);
+  assert(
+    toggleRes.action === 'open' || toggleRes.action === 'close' || toggleRes.action === 'focus',
+    'toggle-launcher dry-run works'
+  );
 }
 
 function testAgentLaunchersDryRun() {
@@ -217,15 +213,15 @@ function testAppLaunchersDryRun() {
 }
 
 function testViewComponents() {
-  group('6. View Registry & Action Footers');
+  group('6. View Registry, Action Footers & In-Sidebar Navigation');
   const views = require('../lib/views');
+  const { App } = require('../lib/app');
 
   assert(Array.isArray(views.TOOLS) && views.TOOLS.length === 3, 'views.TOOLS contains 3 workspace tools');
 
   const symlinkDef = views.byKey('symlinks');
-  assert(symlinkDef?.popupEntrypoint === 'symlinks-popup', 'symlinks has popupEntrypoint symlinks-popup');
   const symlinkView = symlinkDef.view();
-  assert(symlinkView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'symlinkView action footer includes [esc close]');
+  assert(symlinkView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'symlinkView action footer includes [esc back]');
   assert(symlinkView.actions.some((a) => a.key === 'b' && a.label === 'browse'), 'symlinkView action footer includes [b browse]');
   assert(symlinkView.actions.some((a) => a.key === 'e' && a.label === 'explore'), 'symlinkView action footer includes [e explore]');
   assert(symlinkView.actions.some((a) => a.key === 'd' && a.label === 'delete'), 'symlinkView action footer includes [d delete]');
@@ -250,19 +246,30 @@ function testViewComponents() {
   );
 
   const openspecDef = views.byKey('openspec');
-  assert(openspecDef?.popupEntrypoint === 'openspec-popup', 'openspec has popupEntrypoint openspec-popup');
   const openspecView = openspecDef.view();
-  assert(openspecView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'openspecView action footer includes [esc close]');
+  assert(openspecView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'openspecView action footer includes [esc back]');
 
   const planeDef = views.byKey('plane');
-  assert(planeDef?.popupEntrypoint === 'plane-popup', 'plane has popupEntrypoint plane-popup');
   const planeView = planeDef.view();
-  assert(planeView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'planeView action footer includes [esc close]');
+  assert(planeView.actions.some((a) => a.key === 'escape' && a.label === 'back'), 'planeView action footer includes [esc back]');
   assert(planeView.actions.some((a) => a.key === 's' && a.label === 'sync'), 'planeView action footer includes [s sync]');
   assert(planeView.actions.some((a) => a.key === 'p' && a.label === 'project'), 'planeView action footer includes [p project]');
   assert(planeView.actions.some((a) => a.key === 'enter' && a.label === 'open'), 'planeView action footer includes [enter open]');
   assert(typeof planeView.loadProjects === 'function', 'planeView supports loadProjects for parent workspace');
   assert(typeof planeView.loadCrawlOptions === 'function', 'planeView supports loadCrawlOptions for category selection');
+
+  // Test in-sidebar view stack history
+  const rootMenu = { title: 'Launcher', render: () => [] };
+  const subView = { title: 'SubView', render: () => [] };
+  const app = new App({ view: () => rootMenu });
+  app.screen = { draw: () => {} };
+  app.view = rootMenu;
+  app.setView(subView);
+  assert(app.view === subView, 'setView switches view in-place');
+  assert(app.viewHistory.length === 1 && app.viewHistory[0] === rootMenu, 'setView records view history');
+  const popped = app.popView();
+  assert(popped === true && app.view === rootMenu, 'popView returns to root launcher menu');
+  assert(app.viewHistory.length === 0, 'viewHistory is emptied after popView');
 }
 
 function testPlaneConfig() {
@@ -363,6 +370,56 @@ function testPlaneConfig() {
   }
 }
 
+function testMouseInput() {
+  group('8. Mouse Tracking & Interaction');
+  const tui = require('../lib/tui');
+  const { App } = require('../lib/app');
+
+  // Test SGR mouse parsing
+  const sgrClick = Buffer.from('\x1b[<0;15;8M');
+  const parsedSgr = tui.parseKeys(sgrClick);
+  assert(parsedSgr.length === 1 && parsedSgr[0].mouse, 'parseKeys parses SGR mouse click event');
+  assert(parsedSgr[0].mouse.x === 15 && parsedSgr[0].mouse.y === 8 && parsedSgr[0].mouse.pressed, 'SGR mouse coordinates and pressed state match');
+
+  // Test SGR mouse wheel
+  const sgrWheel = Buffer.from('\x1b[<64;10;5M');
+  const parsedWheel = tui.parseKeys(sgrWheel);
+  assert(parsedWheel.length === 1 && parsedWheel[0].mouse.wheel === 'up', 'parseKeys parses SGR wheel up');
+
+  // Test single click activation in App
+  let activated = false;
+  const dummyItem = {
+    type: 'item',
+    label: 'Test Item',
+    run: () => { activated = true; },
+  };
+  const list = new tui.List([dummyItem]);
+  let rendered = false;
+  const dummyApp = {
+    screen: { cols: 40, rows: 20, draw: () => {} },
+    ctx: { cwd: process.cwd() },
+    view: {
+      title: 'Test',
+      list,
+      render: (h, w) => list.render(h, w),
+    },
+    chrome: () => ({ header: ['', '', '', '', ''], footer: ['', ''], hits: [] }),
+    actionHits: [],
+    bodyTop: 5,
+    bodyHeight: 10,
+    render: () => { rendered = true; },
+    activate: function(item) { if (item && item.run) item.run(this); },
+    handleKey: () => {},
+  };
+  // Render list so rowMap is populated
+  list.render(10, 40);
+
+  // Invoke handleMouse directly
+  App.prototype.handleMouse.call(dummyApp, { button: 0, x: 5, y: 6, pressed: true, drag: false });
+  assert(activated === true, 'handleMouse activates item on single click');
+  assert(rendered === true, 'handleMouse triggers render after click');
+}
+
 function main() {
   process.stdout.write('\x1b[1m\x1b[35m=== Herdr-Launcher Self-Test Suite ===\x1b[0m\n');
   const start = Date.now();
@@ -370,11 +427,12 @@ function main() {
   try {
     testSyntax();
     testManifest();
-    testToolPopupsDryRun();
+    testToolLaunchersDryRun();
     testAgentLaunchersDryRun();
     testAppLaunchersDryRun();
     testViewComponents();
     testPlaneConfig();
+    testMouseInput();
   } catch (err) {
     failed += 1;
     errors.push(`Unhandled error: ${err.message}\n${err.stack}`);

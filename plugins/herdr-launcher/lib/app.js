@@ -14,10 +14,10 @@ class App {
 
   constructor(options = {}) {
     this.options = options;
-    this.popup = Boolean(options.popup);
     this.paneId = options.paneId || null;
     this.screen = new Screen();
     this.view = null;
+    this.viewHistory = [];
     this.status = '';
     this.statusKind = 'info';
     this.pending = null;
@@ -33,10 +33,24 @@ class App {
     }
   }
 
-  setView(view) {
+  setView(view, { pushHistory = true } = {}) {
+    if (pushHistory && this.view && this.view !== view) {
+      this.viewHistory.push(this.view);
+    }
     this.view = view;
     if (view.refresh) view.refresh(this);
     this.render();
+  }
+
+  popView() {
+    if (this.viewHistory && this.viewHistory.length > 0) {
+      const prev = this.viewHistory.pop();
+      this.view = prev;
+      if (prev.refresh) prev.refresh(this);
+      this.render();
+      return true;
+    }
+    return false;
   }
 
   setStatus(message, kind = 'info') {
@@ -47,7 +61,6 @@ class App {
   activate(item) {
     if (!item || item.disabled || !item.run) return;
     item.run(this);
-    if (this.popup && item.closeAfter && !this.pending) this.quit();
   }
 
   confirm(message, onYes) {
@@ -146,10 +159,11 @@ class App {
 
     switch (key) {
       case 'q':
+        if (this.popView()) return undefined;
         return this.quit();
       case 'escape':
-
-        return this.popup || this.options.escapeQuits ? this.quit() : undefined;
+        if (this.popView()) return undefined;
+        return this.options.escapeQuits ? this.quit() : undefined;
       case 'up':
       case 'k':
         this.view.list.move(-1);
@@ -181,7 +195,7 @@ class App {
   quit() {
     this.running = false;
     this.screen.stop();
-    if (this.options.closesPane && !this.popup && this.paneId && this.hasNeighbour()) {
+    if (this.options.closesPane && this.paneId && this.hasNeighbour()) {
       h.detachedHerdr(['pane', 'close', this.paneId]);
     }
     process.exit(0);
@@ -211,23 +225,26 @@ class App {
     this.refreshContext();
     this.screen.start();
     this.screen.onResize(() => this.render());
-    this.setView(this.options.view());
-
-    if (!this.popup) {
-      this._liveTimer = setInterval(() => {
-        if (!this.running || this.pending) return;
-        const prevCwd = this.ctx ? this.ctx.cwd : null;
-        this.refreshContext();
-        const cwdChanged = Boolean(this.ctx && this.ctx.cwd !== prevCwd);
-        if (cwdChanged) {
-          if (this.view && this.view.refresh) {
-            this.view.refresh(this, { force: true });
-          }
-          this.render();
-        }
-      }, 1000);
-      this._liveTimer.unref();
+    if (!this.view && this.options.view) {
+      this.setView(this.options.view());
+    } else if (this.view) {
+      if (this.view.refresh) this.view.refresh(this);
+      this.render();
     }
+
+    this._liveTimer = setInterval(() => {
+      if (!this.running || this.pending) return;
+      const prevCwd = this.ctx ? this.ctx.cwd : null;
+      this.refreshContext();
+      const cwdChanged = Boolean(this.ctx && this.ctx.cwd !== prevCwd);
+      if (cwdChanged) {
+        if (this.view && this.view.refresh) {
+          this.view.refresh(this, { force: true });
+        }
+        this.render();
+      }
+    }, 1000);
+    this._liveTimer.unref();
 
     process.stdin.on('data', (chunk) => {
 

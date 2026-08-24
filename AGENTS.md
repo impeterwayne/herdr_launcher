@@ -16,15 +16,14 @@ Instructions and guidelines for AI coding agents implementing features and maint
   ```
 - When adding a new tool, action, or agent capability, add corresponding assertions to `plugins/herdr-launcher/test/self-test.js` covering syntax, manifest declarations, and `--dry-run` outputs.
 
-### Rule 2: Workspace Tools Must Use Popups (Not Split Panes)
-- Workspace tools (**Symlinks**, **OpenSpec setup**, **Plane tasks**, and future workspace modal utilities) **MUST** be implemented as session-modal popups (`placement = "popup"`).
-- **Do NOT** split the layout or create new panes in the split tree for modal workspace utilities.
-- Popups take zero columns from the layout while closed and preserve existing split trees intact.
-- Launch popups via `herdr plugin pane open --plugin herdr-launcher --entrypoint <id>-popup`.
-- Ensure popup views support clean dismissal on both `esc` and `q` (`actions` footer should include `[esc close]`).
+### Rule 2: Single Right-Docked Sidebar for All Tools (No Popups)
+- All launcher capabilities and workspace tools (**Symlinks**, **OpenSpec setup**, **Plane tasks**) operate inside the right-docked sidebar (`launcher-sidebar`, `placement = "split"`).
+- **No popups are used by this plugin**.
+- In-place navigation inside the sidebar allows seamless transitions between the main menu and workspace tool subviews, with `esc` / `[esc back]` returning to the launcher menu.
+- Launch/focus tools in the sidebar via `herdr-launcher.tool-<key>` or `node bin/tool-launch.js <tool-key>`.
 
 ### Rule 3: Support `--dry-run` on All CLI Entrypoints
-- Every command script under `plugins/herdr-launcher/bin/` (`tool-launch.js`, `agent-launch.js`, `app-open.js`, `popup-launcher.js`, `stack-mode.js`, `focus-mode.js`, `startup.js`, etc.) **MUST** support the `--dry-run` flag.
+- Every command script under `plugins/herdr-launcher/bin/` (`tool-launch.js`, `agent-launch.js`, `app-open.js`, `stack-mode.js`, `focus-mode.js`, `startup.js`, `toggle-launcher.js`, etc.) **MUST** support the `--dry-run` flag.
 - `--dry-run` output must be machine-readable JSON printed to `stdout` containing the resolved action and command parameters without modifying session state.
 
 ### Rule 4: Zero External npm Dependencies
@@ -44,8 +43,8 @@ Instructions and guidelines for AI coding agents implementing features and maint
   ```
 - When using `node -e` inline bootstraps, properly assign `process.argv` before requiring target scripts:
   ```javascript
-  process.argv = ["node", r + "/bin/tool-pane.js", "<tool-key>", "--popup"];
-  require(r + "/bin/tool-pane.js");
+  process.argv = ["node", r + "/bin/launcher.js"];
+  require(r + "/bin/launcher.js");
   ```
 
 ### No `cmd.exe` Shims for Interactive TUIs
@@ -73,9 +72,9 @@ Instructions and guidelines for AI coding agents implementing features and maint
 | :--- | :--- |
 | **Run Self-Tests** | `node scripts/self-test.js` |
 | **Syntax Validation** | `Get-ChildItem -Recurse -Filter *.js \| ForEach-Object { node -c $_.FullName }` |
-| **Symlinks Popup (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js symlinks --dry-run` |
-| **OpenSpec Popup (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js openspec --dry-run` |
-| **Plane Popup (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js plane --dry-run` |
-| **Launcher Popup (dry-run)** | `node plugins/herdr-launcher/bin/popup-launcher.js --dry-run` |
+| **Toggle Sidebar (dry-run)** | `node plugins/herdr-launcher/bin/toggle-launcher.js --dry-run` |
+| **Symlinks Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js symlinks --dry-run` |
+| **OpenSpec Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js openspec --dry-run` |
+| **Plane Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js plane --dry-run` |
 | **Link Plugin to Herdr** | `herdr plugin link D:\Quest\herdr_research\plugins\herdr-launcher` |
 | **Reload Herdr Config** | `herdr server reload-config` |
