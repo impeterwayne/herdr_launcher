@@ -7,6 +7,25 @@ const { spawnSync } = require('node:child_process');
 const NATIVE_RE = /\.(exe|com)$/i;
 
 function allOnPath(name) {
+  if (process.platform !== 'win32') {
+    const res = spawnSync('which', ['-a', name], { encoding: 'utf8' });
+    if (res.status === 0 && res.stdout) {
+      const hits = res.stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (hits.length) return hits;
+    }
+    const res2 = spawnSync('which', [name], { encoding: 'utf8' });
+    if (res2.status === 0 && res2.stdout) {
+      const hits = res2.stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (hits.length) return hits;
+    }
+    return [];
+  }
   const res = spawnSync('where.exe', [name], { encoding: 'utf8', windowsHide: true });
   if (res.status !== 0) return [];
   return (res.stdout || '')
@@ -85,6 +104,9 @@ function ensureShim(dir, name, target) {
 function resolveLaunch(kind, shimDir) {
   const matches = allOnPath(kind);
   if (!matches.length) throw new Error(`${kind} is not on PATH — install it first`);
+  if (process.platform !== 'win32') {
+    return { exe: matches[0], native: true, shim: null, env: {} };
+  }
   if (NATIVE_RE.test(matches[0])) return { exe: matches[0], native: true, shim: null, env: {} };
 
   const cmd = matches.find((m) => /\.cmd$/i.test(m));
