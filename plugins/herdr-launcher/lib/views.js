@@ -16,7 +16,7 @@ const shorten = (p, max = 28) => (p && p.length > max ? `…${p.slice(-(max - 1)
 function openBrowser(url) {
   if (!url) return;
   const isWin = process.platform === 'win32';
-  const file = isWin ? process.env.ComSpec || 'cmd.exe' : 'xdg-open';
+  const file = isWin ? process.env.ComSpec || 'cmd.exe' : (process.platform === 'darwin' ? 'open' : 'xdg-open');
   const args = isWin ? ['/d', '/c', 'start', '', url] : [url];
   const child = spawn(file, args, { detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();

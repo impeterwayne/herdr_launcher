@@ -30,6 +30,12 @@ function guiExeBehindShim(shim) {
 }
 
 function hasProductMetadata(exe) {
+  if (process.platform === 'darwin') {
+    const dir = path.dirname(exe);
+    const contents = path.dirname(dir);
+    if (fs.existsSync(path.join(contents, 'Info.plist'))) return true;
+    if (fs.existsSync(path.join(contents, 'Resources', 'product-info.json'))) return true;
+  }
   const root = path.dirname(path.dirname(exe));
   return fs.existsSync(path.join(root, 'product-info.json')) || fs.existsSync(path.join(root, 'build.txt'));
 }
@@ -71,6 +77,10 @@ const APPS = [
       path.join(HOME, 'AppData', 'Local', 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
       path.join(HOME, 'AppData', 'Local', 'Programs', 'Antigravity IDE', 'bin', 'antigravity-ide.cmd'),
       path.join(PF, 'Antigravity IDE', 'Antigravity IDE.exe'),
+      '/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE',
+      '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide',
+      path.join(HOME, '.antigravity-ide', 'antigravity-ide', 'bin', 'antigravity-ide'),
+      path.join(HOME, '.antigravity', 'antigravity', 'bin', 'antigravity'),
     ],
     argsFor: (cwd) => [cwd],
   },
@@ -84,6 +94,10 @@ const APPS = [
       path.join(PF, 'Android', 'Android Studio', 'bin', 'studio64.exe'),
       path.join(PF86, 'Android', 'Android Studio', 'bin', 'studio64.exe'),
       path.join(HOME, 'AppData', 'Local', 'Android', 'Android Studio', 'bin', 'studio64.exe'),
+      '/Applications/Android Studio.app/Contents/MacOS/studio',
+      path.join(HOME, 'Applications', 'Android Studio.app', 'Contents', 'MacOS', 'studio'),
+      '/Applications/Android Studio Preview.app/Contents/MacOS/studio',
+      path.join(HOME, 'Applications', 'Android Studio Preview.app', 'Contents', 'MacOS', 'studio'),
     ],
 
     discover: () =>
@@ -113,6 +127,13 @@ const APPS = [
       path.join(HOME, 'AppData', 'Local', 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
       path.join(PF, 'Microsoft VS Code', 'bin', 'code.cmd'),
       path.join(PF86, 'Microsoft VS Code', 'bin', 'code.cmd'),
+      '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
+      '/Applications/Visual Studio Code.app/Contents/MacOS/Electron',
+      path.join(HOME, 'Applications', 'Visual Studio Code.app', 'Contents', 'Resources', 'app', 'bin', 'code'),
+      '/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code',
+      '/Applications/Cursor.app/Contents/Resources/app/bin/code',
+      '/Applications/Cursor.app/Contents/Resources/app/bin/cursor',
+      path.join(HOME, 'Applications', 'Cursor.app', 'Contents', 'Resources', 'app', 'bin', 'code'),
     ],
     argsFor: (cwd) => [cwd],
   },
@@ -144,7 +165,11 @@ function whichPreferShim(command) {
 }
 
 function resolveApp(app) {
-  if (app.explorer) return process.platform === 'win32' ? 'explorer.exe' : 'xdg-open';
+  if (app.explorer) {
+    if (process.platform === 'win32') return 'explorer.exe';
+    if (process.platform === 'darwin') return 'open';
+    return 'xdg-open';
+  }
 
   const ok = (exe) => exe && fs.existsSync(exe) && (!app.validate || app.validate(exe));
   const unwrap = (exe) =>
