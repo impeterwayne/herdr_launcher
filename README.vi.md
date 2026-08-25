@@ -114,14 +114,14 @@ Phím `prefix` mặc định là `ctrl+b`. Tất cả các phím tắt khởi ch
 
 | Phím | Thao tác thực hiện |
 | :--- | :--- |
-| `prefix+l` | Bật / tắt thanh bên gắn cạnh phải (sidebar) |
-| `prefix+m` | Bật / tắt Chế độ Ngăn xếp (Stack Mode - phóng to pane & giữ sidebar) |
+| `prefix+alt+space` | Bật / tắt thanh bên gắn cạnh phải (sidebar) |
+| `prefix+alt+m` | Bật / tắt Chế độ Ngăn xếp (Stack Mode - phóng to pane & giữ sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |
 | `prefix+alt+shift+c` | Codex (`--dangerously-bypass-approvals-and-sandbox`) |
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Khung Terminal nội tại (Native PTY) |
-| `prefix+alt+l` | Công cụ quản lý Symlinks cho workspace |
+| `prefix+alt+y` | Công cụ quản lý Symlinks cho workspace |
 | `prefix+alt+s` | Công cụ thiết lập OpenSpec |
 | `prefix+alt+p` | Công cụ quản lý công việc Plane |
 | `prefix+alt+v` | Mở VS Code tại thư mục đang hoạt động |

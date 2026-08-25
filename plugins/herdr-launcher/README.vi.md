@@ -127,14 +127,14 @@ Phím `prefix` mặc định là `ctrl+b`. Tất cả các phím tắt khởi ch
 
 | Phím tắt | Thao tác thực hiện |
 | :--- | :--- |
-| `prefix+l` | Bật / tắt thanh bên gắn cạnh phải (sidebar) |
-| `prefix+m` | Bật / tắt Chế độ Ngăn xếp (Stack Mode - phóng to pane & giữ sidebar) |
+| `prefix+alt+space` | Bật / tắt thanh bên gắn cạnh phải (sidebar) |
+| `prefix+alt+m` | Bật / tắt Chế độ Ngăn xếp (Stack Mode - phóng to pane & giữ sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |
 | `prefix+alt+shift+c` | Codex (`--dangerously-bypass-approvals-and-sandbox`) |
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Khung Terminal nội tại (Native PTY) |
-| `prefix+alt+l` | Công cụ quản lý Symlinks cho workspace |
+| `prefix+alt+y` | Công cụ quản lý Symlinks cho workspace |
 | `prefix+alt+s` | Công cụ thiết lập OpenSpec |
 | `prefix+alt+p` | Công cụ quản lý công việc Plane |
 | `prefix+alt+v` | Mở VS Code tại thư mục đang hoạt động |
@@ -177,7 +177,7 @@ Mỗi lần nhấn phím sẽ khởi chạy một phiên agent mới được c�
 
 ## Các công cụ Không gian làm việc (Workspace Tools)
 
-### Symlinks (`prefix+alt+l`)
+### Symlinks (`prefix+alt+y`)
 Quét các git worktree liền kề và gợi ý liên kết các thư mục nặng dùng chung (`node_modules`, `build`, `dist`, `.gradle`, `vendor`, `target`, `.venv`).
 - Sử dụng **NTFS Junctions** nguyên bản trên Windows (không yêu cầu quyền Quản trị viên / Administrator hay bật Developer Mode) và **Symlinks** tiêu chuẩn trên Unix.
 - Các nút hành động: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc close]`.
@@ -208,9 +208,9 @@ Mở các ứng dụng desktop ở tiến trình độc lập (detached process)
 
 ---
 
-## Chế độ Ngăn xếp (Stack Mode - `prefix+m`)
+## Chế độ Ngăn xếp (Stack Mode - `prefix+alt+m`)
 
-Chuyển đổi kích thước khung làm việc hoặc agent đang hoạt động để chiếm khoảng **~90% chiều rộng tab**, trong khi vẫn giữ thanh bên launcher 20 cột cố định ở mép phải. Nhấn lại `prefix+m` để khôi phục bố cục cân bằng ban đầu.
+Chuyển đổi kích thước khung làm việc hoặc agent đang hoạt động để chiếm khoảng **~90% chiều rộng tab**, trong khi vẫn giữ thanh bên launcher 20 cột cố định ở mép phải. Nhấn lại `prefix+alt+m` để khôi phục bố cục cân bằng ban đầu.
 
 ---
 

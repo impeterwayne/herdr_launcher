@@ -147,9 +147,21 @@ function testManifest() {
   assert(fs.existsSync(configExamplePath), 'config.example.toml exists');
   const configContent = fs.readFileSync(configExamplePath, 'utf8');
   const { keys } = parseTomlBasic(configContent);
+  const toggleKey = keys.find((k) => k.command === 'herdr-launcher.toggle-launcher');
+  assert(toggleKey, 'config.example.toml defines herdr-launcher.toggle-launcher keybinding');
+  assert(toggleKey.key === 'prefix+alt+space', 'config.example.toml maps toggle-launcher to prefix+alt+space (no prefix+l pane navigation conflict)');
+
   const stackKey = keys.find((k) => k.command === 'herdr-launcher.stack-mode');
   assert(stackKey, 'config.example.toml defines herdr-launcher.stack-mode keybinding');
-  assert(stackKey.key === 'prefix+m', 'config.example.toml maps stack-mode to prefix+m (no prefix+z zoom conflict)');
+  assert(stackKey.key === 'prefix+alt+m', 'config.example.toml maps stack-mode to prefix+alt+m (no prefix+z zoom conflict)');
+
+  const symlinkKey = keys.find((k) => k.command === 'herdr-launcher.tool-symlinks');
+  assert(symlinkKey, 'config.example.toml defines herdr-launcher.tool-symlinks keybinding');
+  assert(symlinkKey.key === 'prefix+alt+y', 'config.example.toml maps tool-symlinks to prefix+alt+y');
+
+  const paneNavConflict = keys.find((k) => k.key === 'prefix+l');
+  assert(!paneNavConflict, 'no keybinding in config.example.toml uses prefix+l (preserves native right-pane navigation)');
+
   const zoomConflict = keys.find((k) => k.key === 'prefix+z');
   assert(!zoomConflict, 'no keybinding in config.example.toml uses prefix+z (preserves native zoom)');
 }

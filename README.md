@@ -114,14 +114,14 @@ node scripts/self-test.js
 
 | Key | Action |
 | :--- | :--- |
-| `prefix+l` | Toggle docked sidebar (right edge) |
-| `prefix+m` | Toggle Stack Mode (maximize pane + keep sidebar) |
+| `prefix+alt+space` | Toggle docked sidebar (right edge) |
+| `prefix+alt+m` | Toggle Stack Mode (maximize pane + keep sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |
 | `prefix+alt+shift+c` | Codex (`--dangerously-bypass-approvals-and-sandbox`) |
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Native Terminal pane |
-| `prefix+alt+l` | Symlinks workspace tool |
+| `prefix+alt+y` | Symlinks workspace tool |
 | `prefix+alt+s` | OpenSpec setup tool |
 | `prefix+alt+p` | Plane tasks tool |
 | `prefix+alt+v` | Open VS Code in active directory |

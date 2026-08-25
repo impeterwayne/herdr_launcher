@@ -118,14 +118,14 @@ node scripts/self-test.js
 
 | Key | Action |
 | :--- | :--- |
-| `prefix+l` | Toggle docked sidebar (right edge) |
-| `prefix+m` | Toggle Stack Mode (maximize pane + keep sidebar) |
+| `prefix+alt+space` | Toggle docked sidebar (right edge) |
+| `prefix+alt+m` | Toggle Stack Mode (maximize pane + keep sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |
 | `prefix+alt+shift+c` | Codex (`--dangerously-bypass-approvals-and-sandbox`) |
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Native Terminal pane |
-| `prefix+alt+l` | Symlinks workspace tool |
+| `prefix+alt+y` | Symlinks workspace tool |
 | `prefix+alt+s` | OpenSpec setup tool |
 | `prefix+alt+p` | Plane tasks tool |
 | `prefix+alt+v` | Open VS Code in active directory |
@@ -168,7 +168,7 @@ Each press launches a new agent instance configured to bypass permission prompts
 
 ## Workspace Tools
 
-### Symlinks (`prefix+alt+l`)
+### Symlinks (`prefix+alt+y`)
 Scans sibling git worktrees and suggests links for heavy shared directories (`node_modules`, `build`, `dist`, `.gradle`, `vendor`, `target`, `.venv`).
 - Uses native junctions on Windows (requires no admin privileges or Developer Mode) and standard symlinks on Unix.
 - Action chips: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc close]`.
@@ -199,9 +199,9 @@ Opens desktop applications detached at the active pane's directory and brings ex
 
 ---
 
-## Stack Mode (`prefix+m`)
+## Stack Mode (`prefix+alt+m`)
 
-Toggles the active work or agent pane to fill ~90% of the tab width while keeping the 20-column launcher sidebar docked on the right. Pressing `prefix+m` again restores the balanced layout.
+Toggles the active work or agent pane to fill ~90% of the tab width while keeping the 20-column launcher sidebar docked on the right. Pressing `prefix+alt+m` again restores the balanced layout.
 
 ---
 
