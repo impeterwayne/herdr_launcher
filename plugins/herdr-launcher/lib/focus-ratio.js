@@ -24,25 +24,33 @@ function resetFibonacciSplits(tabId, anchorPaneId) {
     const sidebarPane = panes.find(isSidebar);
 
     // 1. Maintain Sidebar Split at default columns
+    let sidebarSplit = null;
     if (sidebarPane) {
-      const sidebarSplit = layout.splits.find(
-        (s) => s.direction === 'right' && s.rect.x === layout.area.x && s.rect.width === layout.area.width
-      );
-      if (sidebarSplit) {
-        const targetRatio = Math.max(0.1, Math.min(0.9, (layout.area.width - defaultCols()) / layout.area.width));
-        const diff = Number((targetRatio - sidebarSplit.ratio).toFixed(4));
-        if (Math.abs(diff) >= 0.02) {
-          const dir = diff > 0 ? 'right' : 'left';
-          h.tryHerdr(['pane', 'resize', '--pane', sidebarPane.pane_id, '--direction', dir, '--amount', String(Math.abs(diff))]);
+      const sidebarLayoutPane = layout.panes && layout.panes.find((p) => p.pane_id === sidebarPane.pane_id);
+      if (sidebarLayoutPane) {
+        const candidateSplits = layout.splits.filter(
+          (s) =>
+            s.direction === 'right' &&
+            sidebarLayoutPane.rect.x + sidebarLayoutPane.rect.width === s.rect.x + s.rect.width &&
+            sidebarLayoutPane.rect.y >= s.rect.y &&
+            sidebarLayoutPane.rect.y + sidebarLayoutPane.rect.height <= s.rect.y + s.rect.height
+        );
+        if (candidateSplits.length) {
+          candidateSplits.sort((a, b) => a.rect.width - b.rect.width);
+          sidebarSplit = candidateSplits[0];
+          const targetRatio = Math.max(0.1, Math.min(0.95, (sidebarSplit.rect.width - defaultCols()) / sidebarSplit.rect.width));
+          const diff = Number((targetRatio - sidebarSplit.ratio).toFixed(4));
+          if (Math.abs(diff) >= 0.02) {
+            const dir = diff > 0 ? 'right' : 'left';
+            h.tryHerdr(['pane', 'resize', '--pane', sidebarPane.pane_id, '--direction', dir, '--amount', String(Math.abs(diff))]);
+          }
         }
       }
     }
 
     // 2. Reset all other splits to balanced 0.5 (Fibonacci)
     const workSplits = layout.splits.filter((s) => {
-      if (sidebarPane && s.direction === 'right' && s.rect.x === layout.area.x && s.rect.width === layout.area.width) {
-        return false;
-      }
+      if (sidebarSplit && s.id === sidebarSplit.id) return false;
       return true;
     });
 

@@ -17,7 +17,13 @@ const isAgent = (pane) =>
         (pane.tokens[OWNER_TOKEN] && String(pane.tokens[OWNER_TOKEN]).includes('agent')))
   );
 
-const isOurs = (pane) => Boolean(pane && pane.tokens && pane.tokens[OWNER_TOKEN] && !isAgent(pane));
+const isOurs = (pane) =>
+  Boolean(
+    pane &&
+      !isAgent(pane) &&
+      ((pane.tokens && pane.tokens[OWNER_TOKEN] && !String(pane.tokens[OWNER_TOKEN]).includes('agent')) ||
+        String(pane.label || '') === 'Launcher')
+  );
 
 const toolOf = (pane) => (pane && pane.tokens && pane.tokens[TOOL_TOKEN]) || null;
 

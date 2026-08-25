@@ -46,13 +46,13 @@ function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = fals
   if (!target) throw new Error('no pane left to split for the sidebar');
   const width = target.rect.width;
 
-  const ratio = Math.min(0.95, Math.max(0.2, (width - cols) / width));
+  const ratio = Math.min(0.95, Math.max(0.1, (width - cols) / width));
 
   const paneId = h.splitRight(target.pane_id, ratio, cwd);
 
   h.paneRename(paneId, RESTORED_LABEL);
 
-  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)), TOKEN_TTL_MS);
+  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)));
   const command = launchCommand({ paneId, shim, view });
   h.paneRun(paneId, ...command);
   if (focus) h.focusPane(paneId);
@@ -90,7 +90,7 @@ function onRightEdge(paneId) {
 
 function adopt({ paneId, shim = false }) {
   h.paneRename(paneId, RESTORED_LABEL);
-  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)), TOKEN_TTL_MS);
+  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)));
   const command = launchCommand({ paneId, shim });
   h.paneRun(paneId, ...command);
   return { pane: paneId, command };
@@ -100,11 +100,21 @@ function maintainSidebarSize(tabId, sidebarPaneId, cols = defaultCols()) {
   try {
     const layout = h.paneLayout(sidebarPaneId);
     if (!layout || layout.zoomed || !layout.splits || !layout.splits.length) return null;
-    const sidebarSplit = layout.splits.find(
-      (s) => s.direction === 'right' && s.rect.x === layout.area.x && s.rect.width === layout.area.width
+    const sidebarLayoutPane = layout.panes && layout.panes.find((p) => p.pane_id === sidebarPaneId);
+    if (!sidebarLayoutPane) return null;
+
+    const candidateSplits = layout.splits.filter(
+      (s) =>
+        s.direction === 'right' &&
+        sidebarLayoutPane.rect.x + sidebarLayoutPane.rect.width === s.rect.x + s.rect.width &&
+        sidebarLayoutPane.rect.y >= s.rect.y &&
+        sidebarLayoutPane.rect.y + sidebarLayoutPane.rect.height <= s.rect.y + s.rect.height
     );
-    if (!sidebarSplit) return null;
-    const targetRatio = Math.max(0.1, Math.min(0.9, (layout.area.width - cols) / layout.area.width));
+    if (!candidateSplits.length) return null;
+    candidateSplits.sort((a, b) => a.rect.width - b.rect.width);
+    const sidebarSplit = candidateSplits[0];
+
+    const targetRatio = Math.max(0.1, Math.min(0.95, (sidebarSplit.rect.width - cols) / sidebarSplit.rect.width));
     const diff = Number((targetRatio - sidebarSplit.ratio).toFixed(4));
     if (Math.abs(diff) >= 0.02) {
       const dir = diff > 0 ? 'right' : 'left';
@@ -138,8 +148,31 @@ function fallbackTerminal({ tabId, sidebarPane, cwd, cols = defaultCols() }) {
 function reconcileTab({ tabId, panes = h.paneList(), cols = defaultCols() }) {
   const sidebars = sidebarsIn(panes, tabId);
   if (!sidebars.length) return null;
-  const sidebar = sidebars[0];
-  const inTab = panes.filter((p) => p.tab_id === tabId);
+
+  if (sidebars.length > 1) {
+    let enriched = sidebars;
+    try {
+      const layout = h.paneLayout(sidebars[0].pane_id);
+      if (layout && Array.isArray(layout.panes)) {
+        const rectMap = new Map(layout.panes.map((p) => [p.pane_id, p.rect]));
+        enriched = sidebars.map((p) => ({ ...p, rect: rectMap.get(p.pane_id) || null }));
+        enriched.sort((a, b) => ((b.rect ? b.rect.x : 0) - (a.rect ? a.rect.x : 0)));
+      }
+    } catch (_) {}
+
+    const keep = enriched[0];
+    for (const s of sidebars) {
+      if (s.pane_id !== keep.pane_id) {
+        h.paneClose(s.pane_id);
+      }
+    }
+  }
+
+  const freshPanes = h.paneList();
+  const inTab = freshPanes.filter((p) => p.tab_id === tabId);
+  const activeSidebars = sidebarsIn(inTab, tabId);
+  if (!activeSidebars.length) return null;
+  const sidebar = activeSidebars[0];
   const workPanes = inTab.filter((p) => !isOurs(p));
 
   if (workPanes.length === 0) {
