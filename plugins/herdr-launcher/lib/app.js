@@ -331,6 +331,16 @@ class App {
     }
 
     process.stdin.on('data', (chunk) => {
+      // Set HERDR_INPUT_LOG=<path> to dump raw stdin bytes. The alt screen hides console.log,
+      // so this is the only way to tell "input never arrived" from "input arrived, parsed wrong".
+      if (process.env.HERDR_INPUT_LOG) {
+        try {
+          require('node:fs').appendFileSync(
+            process.env.HERDR_INPUT_LOG,
+            `${chunk.toString('hex')}  ${JSON.stringify(parseKeys(chunk))}\n`
+          );
+        } catch (_) {}
+      }
 
       for (const event of parseKeys(chunk)) {
         try {

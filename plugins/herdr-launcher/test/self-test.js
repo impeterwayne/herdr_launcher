@@ -477,6 +477,22 @@ function testMouseInput() {
   assert(parsedSgr.length === 1 && parsedSgr[0].mouse, 'parseKeys parses SGR mouse click event');
   assert(parsedSgr[0].mouse.x === 15 && parsedSgr[0].mouse.y === 8 && parsedSgr[0].mouse.pressed, 'SGR mouse coordinates and pressed state match');
 
+  // Windows console mouse restoration (setRawMode clears ENABLE_MOUSE_INPUT, killing SGR delivery)
+  const winmouse = require('../lib/winmouse');
+  assert(typeof winmouse.restoreMouseInput === 'function', 'winmouse exports restoreMouseInput');
+  assert(fs.existsSync(winmouse.SCRIPT), 'win-mouse-input.ps1 is present in bin/');
+  assert(
+    /ENABLE_MOUSE_INPUT/.test(fs.readFileSync(winmouse.SCRIPT, 'utf8')),
+    'win-mouse-input.ps1 restores ENABLE_MOUSE_INPUT'
+  );
+  if (process.platform !== 'win32') {
+    assert(winmouse.restoreMouseInput() === false, 'restoreMouseInput is a no-op off win32');
+  }
+  assert(
+    /restoreMouseInput\(\)/.test(fs.readFileSync(path.join(ROOT, 'lib', 'tui.js'), 'utf8')),
+    'Screen.start calls restoreMouseInput'
+  );
+
   // Test SGR mouse wheel
   const sgrWheel = Buffer.from('\x1b[<64;10;5M');
   const parsedWheel = tui.parseKeys(sgrWheel);

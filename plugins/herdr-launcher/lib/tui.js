@@ -1,5 +1,7 @@
 'use strict';
 
+const { restoreMouseInput } = require('./winmouse');
+
 const ESC = '\x1b';
 const A = {
   reset: `${ESC}[0m`,
@@ -134,6 +136,7 @@ class Screen {
 
     this.out.write(`${ESC}[?1049h${ESC}[?25l${ESC}[?1002h${ESC}[?1006h`);
     if (this.in.isTTY) this.in.setRawMode(true);
+    restoreMouseInput();
     this.in.resume();
     this._resize = () => this._onResizeCb && this._onResizeCb();
     this.out.on('resize', this._resize);
