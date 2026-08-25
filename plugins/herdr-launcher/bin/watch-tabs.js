@@ -203,6 +203,7 @@ function watch() {
       [
         'tab.created',
         'tab.closed',
+        'pane.created',
         'pane.closed',
         'pane.exited',
         'layout.updated',
@@ -251,6 +252,8 @@ function watch() {
             50
           );
         } else if (
+          type === 'pane_created' ||
+          type === 'pane.created' ||
           type === 'pane_closed' ||
           type === 'pane.closed' ||
           type === 'pane_exited' ||

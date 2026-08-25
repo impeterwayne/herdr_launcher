@@ -135,11 +135,27 @@ function resolveFibonacciTarget({ ctx, tabPanes = [], agentList = [], explicitDi
     targetPane = masterPane;
   } else if (nonPluginPanes.length > 0) {
     targetPane = nonPluginPanes[0];
-  } else if (enriched.length > 0) {
-    targetPane = enriched[0];
   }
 
   if (!targetPane) {
+    const sidebar = enriched.find(isSidebar) || enriched[0];
+    if (sidebar) {
+      let areaWidth = 80;
+      try {
+        const layout = h.paneLayout(sidebar.pane_id);
+        if (layout && layout.area && layout.area.width) areaWidth = layout.area.width;
+      } catch (_) {}
+      const { defaultCols } = require('./dock');
+      const cols = defaultCols();
+      const ratio = Math.min(0.95, Math.max(0.1, (areaWidth - cols) / areaWidth));
+      return {
+        targetPane: sidebar,
+        direction: 'left',
+        ratio,
+        agentPanes: [],
+        workPanes: [],
+      };
+    }
     throw new Error('no active pane to split — open a pane first');
   }
 

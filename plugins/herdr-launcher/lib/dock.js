@@ -132,7 +132,7 @@ function fallbackTerminal({ tabId, sidebarPane, cwd, cols = defaultCols() }) {
     if (!sidebarPane || !sidebarPane.pane_id) return null;
     const layout = h.paneLayout(sidebarPane.pane_id);
     const areaWidth = (layout && layout.area && layout.area.width) || 80;
-    const ratio = Math.min(0.95, Math.max(0.2, (areaWidth - cols) / areaWidth));
+    const ratio = Math.min(0.95, Math.max(0.1, (areaWidth - cols) / areaWidth));
     const targetCwd = cwd || sidebarPane.cwd || process.cwd();
     const newPaneId = h.splitLeft(sidebarPane.pane_id, ratio, targetCwd);
     if (newPaneId) {
@@ -178,6 +178,54 @@ function reconcileTab({ tabId, panes = h.paneList(), cols = defaultCols() }) {
   if (workPanes.length === 0) {
     return fallbackTerminal({ tabId, sidebarPane: sidebar, cwd: sidebar.cwd, cols });
   }
+
+  // Rescue any non-sidebar pane that got split into the sidebar's column
+  try {
+    const layout = h.paneLayout(sidebar.pane_id);
+    if (layout && Array.isArray(layout.panes) && !layout.zoomed) {
+      const sidebarLayoutPane = layout.panes.find((p) => p.pane_id === sidebar.pane_id);
+      if (sidebarLayoutPane) {
+        const rightEdge = layout.area.x + layout.area.width;
+        const trappedPanes = layout.panes.filter(
+          (p) =>
+            p.pane_id !== sidebar.pane_id &&
+            !isOurs(inTab.find((x) => x.pane_id === p.pane_id)) &&
+            p.rect.x + p.rect.width === rightEdge &&
+            p.rect.x >= sidebarLayoutPane.rect.x - 2
+        );
+
+        if (trappedPanes.length > 0) {
+          const validWorkPanes = layout.panes.filter(
+            (p) =>
+              p.pane_id !== sidebar.pane_id &&
+              !trappedPanes.some((tp) => tp.pane_id === p.pane_id)
+          );
+
+          for (const trapped of trappedPanes) {
+            if (validWorkPanes.length > 0) {
+              validWorkPanes.sort((a, b) => (b.rect.x + b.rect.width) - (a.rect.x + a.rect.width));
+              const targetWorkPane = validWorkPanes[0];
+              h.paneMove(trapped.pane_id, {
+                tab: tabId,
+                targetPane: targetWorkPane.pane_id,
+                split: 'down',
+                ratio: 0.5,
+              });
+            } else {
+              const targetRatio = Math.max(0.1, Math.min(0.95, (layout.area.width - cols) / layout.area.width));
+              h.paneMove(trapped.pane_id, {
+                tab: tabId,
+                targetPane: sidebar.pane_id,
+                split: 'left',
+                ratio: targetRatio,
+              });
+            }
+          }
+          return { action: 'rescued-trapped-panes', count: trappedPanes.length };
+        }
+      }
+    }
+  } catch (_) {}
 
   return maintainSidebarSize(tabId, sidebar.pane_id, cols);
 }
