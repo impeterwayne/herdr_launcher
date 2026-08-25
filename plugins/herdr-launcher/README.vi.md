@@ -127,7 +127,7 @@ Phím `prefix` mặc định là `ctrl+b`. Tất cả các phím tắt khởi ch
 
 | Phím tắt | Thao tác thực hiện |
 | :--- | :--- |
-| `prefix+alt+space` | Bật / tắt thanh bên gắn cạnh phải (sidebar) |
+| `prefix+\` | Bật / tắt thanh bên gắn cạnh phải (sidebar) |
 | `prefix+alt+m` | Bật / tắt Chế độ Ngăn xếp (Stack Mode - phóng to pane & giữ sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |

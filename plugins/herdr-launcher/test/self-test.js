@@ -149,7 +149,7 @@ function testManifest() {
   const { keys } = parseTomlBasic(configContent);
   const toggleKey = keys.find((k) => k.command === 'herdr-launcher.toggle-launcher');
   assert(toggleKey, 'config.example.toml defines herdr-launcher.toggle-launcher keybinding');
-  assert(toggleKey.key === 'prefix+alt+space', 'config.example.toml maps toggle-launcher to prefix+alt+space (no prefix+l pane navigation conflict)');
+  assert(toggleKey.key === 'prefix+\\', 'config.example.toml maps toggle-launcher to prefix+\\ (no prefix+l pane navigation conflict)');
 
   const stackKey = keys.find((k) => k.command === 'herdr-launcher.stack-mode');
   assert(stackKey, 'config.example.toml defines herdr-launcher.stack-mode keybinding');

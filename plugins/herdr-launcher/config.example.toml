@@ -1,5 +1,5 @@
 [[keys.command]]
-key = "prefix+alt+space"
+key = "prefix+\\"
 type = "plugin_action"
 command = "herdr-launcher.toggle-launcher"
 description = "toggle launcher sidebar"

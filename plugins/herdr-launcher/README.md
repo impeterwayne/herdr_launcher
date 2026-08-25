@@ -118,7 +118,7 @@ node scripts/self-test.js
 
 | Key | Action |
 | :--- | :--- |
-| `prefix+alt+space` | Toggle docked sidebar (right edge) |
+| `prefix+\` | Toggle docked sidebar (right edge) |
 | `prefix+alt+m` | Toggle Stack Mode (maximize pane + keep sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |
