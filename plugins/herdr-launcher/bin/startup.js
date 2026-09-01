@@ -92,20 +92,22 @@ function main() {
       continue;
     }
 
-    if (panes.some((p) => p.tab_id === tab.tab_id && isOurs(p))) {
-      skipped.push({ tab: tab.tab_id, reason: 'launcher already live' });
-      continue;
-    }
     const orphans = dock.orphansIn(panes, tab.tab_id);
-    const orphan = orphans.find((p) => dock.onRightEdge(p.pane_id)) || null;
+    const orphan = orphans.find((p) => dock.onRightEdge(p.pane_id)) || orphans[0] || null;
     if (orphan) {
       if (dryRun) {
-        adopted.push({ tab: tab.tab_id, pane: orphan.pane_id, command: dock.launchCommand() });
+        adopted.push({ tab: tab.tab_id, pane: orphan.pane_id, command: dock.launchCommand({ paneId: orphan.pane_id }) });
         continue;
       }
       const result = dock.adopt({ paneId: orphan.pane_id });
       log(`adopted ${result.pane} in ${tab.tab_id}`);
       adopted.push({ tab: tab.tab_id, ...result });
+      continue;
+    }
+
+    const hasLiveLauncher = panes.some((p) => p.tab_id === tab.tab_id && isOurs(p) && !h.paneIsIdleShell(p.pane_id));
+    if (hasLiveLauncher) {
+      skipped.push({ tab: tab.tab_id, reason: 'launcher already live' });
       continue;
     }
 

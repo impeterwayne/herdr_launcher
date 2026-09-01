@@ -102,7 +102,7 @@ function paneIsIdleShell(paneId) {
   const info = paneProcessInfo(paneId);
   if (!info || !info.shell_pid) return false;
   const fg = info.foreground_processes || [];
-  return fg.length === 1 && fg[0].pid === info.shell_pid;
+  return fg.length === 0 || (fg.length === 1 && fg[0].pid === info.shell_pid);
 }
 
 function paneMove(paneId, { tab, targetPane, split, ratio, newTab, label } = {}) {

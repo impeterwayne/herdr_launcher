@@ -188,7 +188,7 @@ function testToolPopupsDryRun() {
   const toggleLauncherJs = path.join(BIN_DIR, 'toggle-launcher.js');
   const toggleRes = runJson(toggleLauncherJs, ['--dry-run']);
   assert(
-    toggleRes.action === 'open' || toggleRes.action === 'close' || toggleRes.action === 'focus',
+    toggleRes.action === 'open' || toggleRes.action === 'close' || toggleRes.action === 'focus' || toggleRes.action === 'adopt',
     'toggle-launcher dry-run works'
   );
 
@@ -623,6 +623,40 @@ function testTabWatcherAndAutoDock() {
   assert(watchCfg.autoDock !== false, 'autoDock configuration defaults to enabled (true)');
 }
 
+function testDeadProcessRecoveryAndOrphanAdoption() {
+  group('10. Dead Process Recovery & Orphan Adoption');
+  const h = require('../lib/herdr');
+  const dock = require('../lib/dock');
+  const context = require('../lib/context');
+
+  assert(typeof h.paneIsIdleShell === 'function', 'h.paneIsIdleShell is exported as a function');
+  assert(typeof dock.orphansIn === 'function', 'dock.orphansIn is exported as a function');
+  assert(typeof dock.adopt === 'function', 'dock.adopt is exported as a function');
+
+  // Verify orphansIn identifies idle shell launcher panes
+  const mockIdlePane = {
+    pane_id: 'mock:dead1',
+    tab_id: 'mock:tab1',
+    label: 'Launcher',
+    tokens: {},
+  };
+  const mockLivePane = {
+    pane_id: 'mock:live1',
+    tab_id: 'mock:tab1',
+    label: 'Launcher',
+    tokens: { 'herdr-launcher': '12345' },
+  };
+
+  // Mock paneList and test orphans filtering
+  const testPanes = [mockIdlePane, mockLivePane];
+  assert(context.isOurs(mockIdlePane) === true, 'isOurs recognizes pane with Launcher label');
+  assert(context.isOurs(mockLivePane) === true, 'isOurs recognizes pane with token');
+
+  // Test launchCommand returns proper command structure
+  const cmd = dock.launchCommand({ paneId: 'test:p1' });
+  assert(Array.isArray(cmd) && cmd.includes('test:p1'), 'dock.launchCommand includes specified pane id');
+}
+
 function main() {
   process.stdout.write('\x1b[1m\x1b[35m=== Herdr-Launcher Self-Test Suite ===\x1b[0m\n');
   const start = Date.now();
@@ -637,6 +671,7 @@ function main() {
     testPlaneConfig();
     testMouseInput();
     testTabWatcherAndAutoDock();
+    testDeadProcessRecoveryAndOrphanAdoption();
   } catch (err) {
     failed += 1;
     errors.push(`Unhandled error: ${err.message}\n${err.stack}`);

@@ -32,20 +32,57 @@ function main() {
   const inTab = panes.filter((p) => p.tab_id === focused.tab_id);
   const mine = inTab.filter(isOurs);
 
-  if (mine.length && !forceOpen) {
-    const focusedMine = mine.find((p) => p.focused);
+  const deadMine = mine.filter((p) => h.paneIsIdleShell(p.pane_id));
+  const liveMine = mine.filter((p) => !h.paneIsIdleShell(p.pane_id));
+
+  if (deadMine.length > 0 && liveMine.length > 0) {
+    for (const p of deadMine) {
+      if (!dryRun) h.paneClose(p.pane_id);
+    }
+  }
+
+  if (deadMine.length > 0 && liveMine.length === 0 && !forceClose) {
+    const target = deadMine.find((p) => dock.onRightEdge(p.pane_id)) || deadMine[0];
+    for (const p of deadMine) {
+      if (p.pane_id !== target.pane_id && !dryRun) {
+        h.paneClose(p.pane_id);
+      }
+    }
+    if (dryRun) {
+      return report({
+        action: 'adopt',
+        pane: target.pane_id,
+        command: dock.launchCommand({ paneId: target.pane_id }),
+      });
+    }
+    const result = dock.adopt({ paneId: target.pane_id });
+    h.focusPane(target.pane_id);
+    startWatcher();
+    return report({ action: 'adopted', ...result });
+  }
+
+  if (liveMine.length && !forceOpen) {
+    const focusedMine = liveMine.find((p) => p.focused);
     if (focusedMine || forceClose) {
-      const target = focusedMine || mine[0];
+      const target = focusedMine || liveMine[0];
       if (dryRun) return report({ action: 'close', pane: target.pane_id });
       h.paneClose(target.pane_id);
       return report({ action: 'closed', pane: target.pane_id });
     }
-    if (dryRun) return report({ action: 'focus', pane: mine[0].pane_id });
-    h.focusPane(mine[0].pane_id);
-    return report({ action: 'focused', pane: mine[0].pane_id });
+    if (dryRun) return report({ action: 'focus', pane: liveMine[0].pane_id });
+    h.focusPane(liveMine[0].pane_id);
+    return report({ action: 'focused', pane: liveMine[0].pane_id });
   }
 
-  if (forceClose) return report({ action: 'noop', reason: 'no launcher pane in this tab' });
+  if (forceClose) {
+    if (deadMine.length) {
+      for (const p of deadMine) {
+        if (!dryRun) h.paneClose(p.pane_id);
+      }
+      return report({ action: 'closed', panes: deadMine.map((p) => p.pane_id) });
+    }
+    return report({ action: 'noop', reason: 'no launcher pane in this tab' });
+  }
 
   const avoid = mine.map((p) => p.pane_id);
 

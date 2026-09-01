@@ -60,7 +60,15 @@ function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = fals
 }
 
 function ensure({ tabId, panes = h.paneList(), cols = defaultCols(), focus = false }) {
-  if (sidebarsIn(panes, tabId).length) return null;
+  const orphans = orphansIn(panes, tabId);
+  const orphan = orphans.find((p) => onRightEdge(p.pane_id)) || orphans[0];
+  if (orphan) {
+    const res = adopt({ paneId: orphan.pane_id });
+    if (focus) h.focusPane(orphan.pane_id);
+    return res;
+  }
+  const liveSidebars = sidebarsIn(panes, tabId).filter((p) => !h.paneIsIdleShell(p.pane_id));
+  if (liveSidebars.length) return null;
   const inTab = panes.filter((p) => p.tab_id === tabId);
   if (!inTab.length) return null;
   const anchor = inTab.find((p) => p.focused) || inTab[0];
@@ -74,8 +82,7 @@ function orphansIn(panes, tabId) {
   return panes.filter(
     (p) =>
       p.tab_id === tabId &&
-      String(p.label || '') === RESTORED_LABEL &&
-      !hasPluginTokens(p) &&
+      isOurs(p) &&
       h.paneIsIdleShell(p.pane_id)
   );
 }
@@ -173,6 +180,11 @@ function reconcileTab({ tabId, panes = h.paneList(), cols = defaultCols() }) {
   const activeSidebars = sidebarsIn(inTab, tabId);
   if (!activeSidebars.length) return null;
   const sidebar = activeSidebars[0];
+
+  if (h.paneIsIdleShell(sidebar.pane_id)) {
+    return adopt({ paneId: sidebar.pane_id });
+  }
+
   const workPanes = inTab.filter((p) => !isOurs(p));
 
   if (workPanes.length === 0) {
