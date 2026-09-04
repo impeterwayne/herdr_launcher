@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 
 const h = require('../lib/herdr');
 const dock = require('../lib/dock');
+const liveness = require('../lib/liveness');
 const stash = require('../lib/stash');
 const { isOurs, configDir, readConfig } = require('../lib/context');
 
@@ -86,6 +87,10 @@ function main() {
   const adopted = [];
   const skipped = [];
 
+  // Panes are gone but their ids come back in a new session, so clear out the
+  // launcher records left behind by the last one before anything reads them.
+  if (!dryRun) liveness.prune(panes.map((p) => p.pane_id));
+
   for (const tab of tabs) {
     if (stash.isStashTab(tab.label)) {
       skipped.push({ tab: tab.tab_id, reason: 'stash tab' });
@@ -99,13 +104,17 @@ function main() {
         adopted.push({ tab: tab.tab_id, pane: orphan.pane_id, command: dock.launchCommand({ paneId: orphan.pane_id }) });
         continue;
       }
-      const result = dock.adopt({ paneId: orphan.pane_id });
+      const result = dock.adopt({ paneId: orphan.pane_id, pane: orphan });
+      if (result.skipped) {
+        skipped.push({ tab: tab.tab_id, pane: result.pane, reason: result.skipped });
+        continue;
+      }
       log(`adopted ${result.pane} in ${tab.tab_id}`);
       adopted.push({ tab: tab.tab_id, ...result });
       continue;
     }
 
-    const hasLiveLauncher = panes.some((p) => p.tab_id === tab.tab_id && isOurs(p) && !h.paneIsIdleShell(p.pane_id));
+    const hasLiveLauncher = panes.some((p) => p.tab_id === tab.tab_id && isOurs(p) && dock.launcherIsLive(p.pane_id, p));
     if (hasLiveLauncher) {
       skipped.push({ tab: tab.tab_id, reason: 'launcher already live' });
       continue;

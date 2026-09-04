@@ -279,6 +279,7 @@ Các tệp cấu hình được đặt trong thư mục cấu hình plugin của
     "style": "ascii"
   }
   ```
+- **`panes/<pane-id>.json`**: do plugin tự ghi, không phải để bạn sửa. Mỗi launcher đang chạy ghi lại pane và pid của nó ở đây để các lượt dock phân biệt được sidebar còn sống với sidebar đã chết — trên Windows, `pane process-info` của herdr chỉ báo shell của pane, nên nếu không có bản ghi này thì một launcher đang chạy bị xem như shell rỗng và bị gõ lại câu lệnh khởi chạy vào chính nó. Các bản ghi được dọn khi khởi động.
 
 ---
 

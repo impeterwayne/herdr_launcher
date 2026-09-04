@@ -7,8 +7,19 @@ const { ACTION_ROWS, layoutActions } = require('./actions');
 const { resolveContext, findRepoRoot, OWNER_TOKEN } = require('./context');
 const { TOKEN_TTL_MS } = require('./dock');
 const h = require('./herdr');
+const liveness = require('./liveness');
 
 const STAMP_INTERVAL_MS = 30000;
+
+// A person presses one key at a time; a burst of printable characters in a
+// single chunk is text someone (or something) wrote into the pane's TTY —
+// `herdr pane run` does exactly that when a pass mistakes this pane for a dead
+// shell. Acting on it moves the selection and the trailing CR fires the entry
+// under the cursor, so drop the burst, and the tail that follows it.
+const INPUT_BURST_LIMIT = 2;
+const INPUT_MUTE_MS = 500;
+// Nobody presses a key this soon after the TUI comes up.
+const INPUT_GRACE_MS = 250;
 
 class App {
 
@@ -24,6 +35,27 @@ class App {
     this.pending = null;
     this.ctx = { cwd: process.cwd(), pane: null };
     this.running = true;
+    this.startedAt = Date.now();
+    this.inputMutedUntil = 0;
+  }
+
+  /** True when this chunk of key events is injected text rather than typing. */
+  injectedInput(events) {
+    const now = Date.now();
+    // A prompt is there to receive text, and a paste into it can only ever fill
+    // the buffer it is already reading.
+    if (this.promptState) return false;
+    if (now - this.startedAt < INPUT_GRACE_MS) return true;
+
+    const printable = events.filter(
+      (e) => typeof e === 'string' && e.length === 1 && e >= ' ' && e !== '\x7f'
+    ).length;
+    if (printable > INPUT_BURST_LIMIT) {
+      this.inputMutedUntil = now + INPUT_MUTE_MS;
+      return true;
+    }
+    // The CR that ends an injected command line often arrives in its own chunk.
+    return now < this.inputMutedUntil;
   }
 
   refreshContext() {
@@ -284,6 +316,14 @@ class App {
   start() {
     this.stamp();
     setInterval(() => this.stamp(), STAMP_INTERVAL_MS).unref();
+    // Tell the docking passes a launcher is alive in this pane; without it they
+    // read herdr's process view, which cannot see us, and re-run the launch
+    // command into this TTY. See lib/liveness.js.
+    if (!this.popup && this.paneId) {
+      liveness.heartbeat(this.paneId);
+      setInterval(() => liveness.heartbeat(this.paneId), liveness.BEAT_INTERVAL_MS).unref();
+      process.on('exit', () => liveness.release(this.paneId));
+    }
     this.refreshContext();
     this.screen.start();
     this.screen.onResize(() => this.render());
@@ -342,7 +382,10 @@ class App {
         } catch (_) {}
       }
 
-      for (const event of parseKeys(chunk)) {
+      const events = parseKeys(chunk);
+      if (this.injectedInput(events)) return;
+
+      for (const event of events) {
         try {
           this.handleKey(event);
         } catch (err) {

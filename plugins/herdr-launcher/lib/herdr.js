@@ -98,11 +98,17 @@ const paneZoom = (paneId, on) => tryHerdr(['pane', 'zoom', paneId, on ? '--on' :
 const paneProcessInfo = (paneId) =>
   (tryHerdr(['pane', 'process-info', '--pane', paneId]) || {}).process_info || null;
 
-function paneIsIdleShell(paneId) {
-  const info = paneProcessInfo(paneId);
+// Careful: on Windows herdr reports only the pane's shell here, never the
+// shell's children, so this says "idle" for a pane that is running a launcher.
+// Use dock.launcherState()/lib/liveness for "is our launcher running in it".
+function isIdleShellInfo(info) {
   if (!info || !info.shell_pid) return false;
   const fg = info.foreground_processes || [];
   return fg.length === 0 || (fg.length === 1 && fg[0].pid === info.shell_pid);
+}
+
+function paneIsIdleShell(paneId) {
+  return isIdleShellInfo(paneProcessInfo(paneId));
 }
 
 function paneMove(paneId, { tab, targetPane, split, ratio, newTab, label } = {}) {
@@ -158,6 +164,7 @@ module.exports = {
   tabRename,
   paneZoom,
   paneProcessInfo,
+  isIdleShellInfo,
   paneIsIdleShell,
   paneMove,
   paneSwap,

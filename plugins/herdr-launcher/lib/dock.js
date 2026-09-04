@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const h = require('./herdr');
+const liveness = require('./liveness');
 const { isOurs, hasPluginTokens, OWNER_TOKEN, readConfig } = require('./context');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -18,6 +19,55 @@ const EXPANDED_COLS = BAR_COLS + BORDER_COLS;
 const defaultCols = () => Number((readConfig('sidebar.json') || {}).expandedCols) || EXPANDED_COLS;
 
 const sidebarsIn = (panes, tabId) => panes.filter((p) => p.tab_id === tabId && isOurs(p));
+
+/**
+ * 'live' | 'booting' | 'dead' — is a launcher running in this pane?
+ *
+ * Three signals, most precise first:
+ *
+ *  1. the launcher's own record (lib/liveness.js), which knows its pid;
+ *  2. the pane's owner token, which a launch stamps and a running launcher
+ *     refreshes every 30s under a 90s TTL, so herdr drops it shortly after a
+ *     launcher dies. This is what covers a launcher started by an older build
+ *     of the plugin, which writes no record;
+ *  3. herdr's process view — last, because it reports only the pane shell on
+ *     Windows and so calls every pane idle. Acting on that alone re-runs the
+ *     launch command into a live TUI, which reads it as keystrokes and fires
+ *     whatever the menu has selected.
+ *
+ * Pass `pane` (from `pane list`) when it is at hand to save a lookup.
+ */
+function launcherState(paneId, pane = null) {
+  let info;
+  const processInfo = () => (info === undefined ? (info = h.paneProcessInfo(paneId)) : info);
+
+  if (liveness.read(paneId)) {
+    const shellPid = (processInfo() || {}).shell_pid || null;
+    const state = liveness.state(paneId, { shellPid });
+    if (state !== 'unknown') return state;
+  }
+
+  const tokens = paneTokens(paneId, pane);
+  const owner = tokens && tokens[OWNER_TOKEN];
+  if (owner && !String(owner).includes('agent')) return 'live';
+
+  return h.isIdleShellInfo(processInfo()) ? 'dead' : 'live';
+}
+
+function paneTokens(paneId, pane = null) {
+  if (pane) return pane.tokens || null;
+  try {
+    const found = h.paneList().find((p) => p.pane_id === paneId);
+    return found ? found.tokens || null : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Safe to type a launch command into this pane? */
+const launcherIsDead = (paneId, pane = null) => launcherState(paneId, pane) === 'dead';
+
+const launcherIsLive = (paneId, pane = null) => launcherState(paneId, pane) !== 'dead';
 
 function rightmostPane(layout, avoid = []) {
   const panes = layout.panes.filter((p) => !avoid.includes(p.pane_id));
@@ -52,8 +102,12 @@ function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = fals
 
   h.paneRename(paneId, RESTORED_LABEL);
 
-  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)));
+  // A TTL on purpose: while a launcher runs it refreshes this token every 30s,
+  // so herdr dropping it is the signal that the launcher is gone. Ownership of
+  // the pane still reads from its label. See launcherState().
+  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)), TOKEN_TTL_MS);
   const command = launchCommand({ paneId, shim, view });
+  liveness.claim(paneId);
   h.paneRun(paneId, ...command);
   if (focus) h.focusPane(paneId);
   return { pane: paneId, ratio: Number(ratio.toFixed(4)), command, targetWidth: width };
@@ -63,11 +117,12 @@ function ensure({ tabId, panes = h.paneList(), cols = defaultCols(), focus = fal
   const orphans = orphansIn(panes, tabId);
   const orphan = orphans.find((p) => onRightEdge(p.pane_id)) || orphans[0];
   if (orphan) {
-    const res = adopt({ paneId: orphan.pane_id });
+    const res = adopt({ paneId: orphan.pane_id, pane: orphan });
+    if (res.skipped) return null;
     if (focus) h.focusPane(orphan.pane_id);
     return res;
   }
-  const liveSidebars = sidebarsIn(panes, tabId).filter((p) => !h.paneIsIdleShell(p.pane_id));
+  const liveSidebars = sidebarsIn(panes, tabId).filter((p) => launcherIsLive(p.pane_id, p));
   if (liveSidebars.length) return null;
   const inTab = panes.filter((p) => p.tab_id === tabId);
   if (!inTab.length) return null;
@@ -83,7 +138,7 @@ function orphansIn(panes, tabId) {
     (p) =>
       p.tab_id === tabId &&
       isOurs(p) &&
-      h.paneIsIdleShell(p.pane_id)
+      launcherIsDead(p.pane_id, p)
   );
 }
 
@@ -95,10 +150,14 @@ function onRightEdge(paneId) {
   return self.rect.x + self.rect.width === rightEdge;
 }
 
-function adopt({ paneId, shim = false }) {
+function adopt({ paneId, pane = null, shim = false, force = false }) {
+  // `pane run` types into the pane, so a launcher that is already running there
+  // would read the command as key presses and act on them.
+  if (!force && !launcherIsDead(paneId, pane)) return { pane: paneId, skipped: 'launcher already running' };
   h.paneRename(paneId, RESTORED_LABEL);
-  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)));
+  h.stampToken(paneId, OWNER_TOKEN, OWNER_TOKEN, String(Math.floor(Date.now() / 1000)), TOKEN_TTL_MS);
   const command = launchCommand({ paneId, shim });
+  liveness.claim(paneId);
   h.paneRun(paneId, ...command);
   return { pane: paneId, command };
 }
@@ -181,8 +240,8 @@ function reconcileTab({ tabId, panes = h.paneList(), cols = defaultCols() }) {
   if (!activeSidebars.length) return null;
   const sidebar = activeSidebars[0];
 
-  if (h.paneIsIdleShell(sidebar.pane_id)) {
-    return adopt({ paneId: sidebar.pane_id });
+  if (launcherIsDead(sidebar.pane_id, sidebar)) {
+    return adopt({ paneId: sidebar.pane_id, pane: sidebar });
   }
 
   const workPanes = inTab.filter((p) => !isOurs(p));
@@ -248,6 +307,9 @@ module.exports = {
   RESTORED_LABEL,
   defaultCols,
   TOKEN_TTL_MS,
+  launcherState,
+  launcherIsDead,
+  launcherIsLive,
   sidebarsIn,
   rightmostPane,
   launchCommand,

@@ -270,6 +270,7 @@ Configuration files live in the Herdr plugin config directory (`~/.config/herdr/
     "style": "ascii"
   }
   ```
+- **`panes/<pane-id>.json`**: written by the plugin, not by you. Each running launcher records its pane and pid here so the docking passes can tell a live sidebar from a dead one — herdr's `pane process-info` reports only the pane shell on Windows, so without this a live launcher looks like an idle shell and gets its launch command typed into it. Records are pruned on startup.
 
 ---
 

@@ -657,6 +657,130 @@ function testDeadProcessRecoveryAndOrphanAdoption() {
   assert(Array.isArray(cmd) && cmd.includes('test:p1'), 'dock.launchCommand includes specified pane id');
 }
 
+function testLauncherLiveness() {
+  group('11. Launcher Liveness (No Re-Run Into A Live Pane)');
+  const liveness = require('../lib/liveness');
+  const dock = require('../lib/dock');
+  const { App } = require('../lib/app');
+  const { parseKeys } = require('../lib/tui');
+
+  assert(typeof dock.launcherState === 'function', 'dock.launcherState is exported as a function');
+  assert(typeof dock.launcherIsDead === 'function', 'dock.launcherIsDead is exported as a function');
+  assert(typeof dock.launcherIsLive === 'function', 'dock.launcherIsLive is exported as a function');
+
+  const recordPath = (paneId) =>
+    path.join(liveness.recordDir(), `${String(paneId).replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
+  const CLAIMED = 'selftest:claimed';
+  const BEATING = 'selftest:beating';
+  const STALE = 'selftest:stale';
+  const FOREIGN = 'selftest:foreign';
+  const panes = [CLAIMED, BEATING, STALE, FOREIGN];
+
+  try {
+    assert(liveness.state('selftest:unrecorded') === 'unknown', 'a pane with no record reads as unknown');
+
+    liveness.claim(CLAIMED);
+    assert(liveness.state(CLAIMED) === 'booting', 'a freshly claimed pane reads as booting');
+    assert(liveness.isBusy(CLAIMED) === true, 'a booting pane counts as busy');
+
+    liveness.heartbeat(BEATING);
+    assert(liveness.state(BEATING) === 'live', 'a pane whose launcher is beating reads as live');
+    assert(
+      liveness.state(BEATING, { shellPid: process.ppid }) === 'live',
+      'a live launcher is recognised as belonging to its own pane shell'
+    );
+    assert(
+      liveness.state(BEATING, { shellPid: 999999 }) === 'dead',
+      'a record whose process belongs to another pane reads as dead'
+    );
+
+    fs.writeFileSync(
+      recordPath(STALE),
+      JSON.stringify({ pane: STALE, launchedAt: Date.now() - liveness.BOOT_GRACE_MS - 1000, pid: null }),
+      'utf8'
+    );
+    assert(liveness.state(STALE) === 'dead', 'a claim that never came up reads as dead once the grace runs out');
+
+    fs.writeFileSync(
+      recordPath(FOREIGN),
+      JSON.stringify({ pane: FOREIGN, launchedAt: Date.now(), pid: 0x7ffffffe, beatAt: Date.now() }),
+      'utf8'
+    );
+    assert(liveness.state(FOREIGN) === 'dead', 'a record for a process that is gone reads as dead');
+
+    assert(liveness.release(BEATING) === true, 'a launcher can release its own record');
+    assert(liveness.state(BEATING) === 'unknown', 'a released pane goes back to unknown');
+
+    const dropped = liveness.prune([CLAIMED]);
+    assert(dropped.includes(recordPath(STALE).split(/[\\/]/).pop().replace(/\.json$/, '')),
+      'prune drops records for panes that no longer exist');
+    assert(liveness.state(CLAIMED) === 'booting', 'prune keeps records for panes that are still open');
+  } finally {
+    for (const pane of panes) {
+      try {
+        fs.unlinkSync(recordPath(pane));
+      } catch (_) {
+
+      }
+    }
+  }
+
+  // A launcher started by an older build writes no record, so the pane's own
+  // token has to carry the signal — adopt stamps it under a TTL and a running
+  // launcher refreshes it, so herdr drops it once the launcher is gone.
+  const tokenPane = { pane_id: 'selftest:tokened', tab_id: 'selftest:t1', label: 'Launcher', tokens: { 'herdr-launcher': '1788420383' } };
+  const barePane = { pane_id: 'selftest:bare', tab_id: 'selftest:t1', label: 'Launcher', tokens: {} };
+  assert(
+    dock.launcherState(tokenPane.pane_id, tokenPane) === 'live',
+    'a record-less pane that still holds its owner token reads as live'
+  );
+  assert(
+    dock.launcherIsDead(tokenPane.pane_id, tokenPane) === false,
+    'a record-less pane with its token is never adopted'
+  );
+  const agentPane = { pane_id: 'selftest:agent', tab_id: 'selftest:t1', tokens: { 'herdr-launcher': 'herdr-launcher-agent' } };
+  assert(
+    require('../lib/context').isOurs(agentPane) === false,
+    'an agent token is never mistaken for a sidebar to adopt'
+  );
+  assert(
+    dock.launcherState(barePane.pane_id, barePane) === 'live',
+    'a pane herdr cannot report on is left alone rather than typed into'
+  );
+
+  // The pane-run injection that used to fire menu entries: `herdr pane run`
+  // types its command line into a pane, and a launcher already running there
+  // reads it as keys — 'j' moves down the menu, the trailing CR activates.
+  const injected = `node ${path.join(BIN_DIR, 'launcher.js')} --pane wJ:p4\r`;
+  const injectedEvents = parseKeys(Buffer.from(injected));
+  assert(injectedEvents.includes('enter'), 'an injected launch command does parse to an enter key');
+
+  const guard = { startedAt: Date.now() - 5000, inputMutedUntil: 0, promptState: null };
+  assert(
+    App.prototype.injectedInput.call(guard, injectedEvents) === true,
+    'App drops an injected command line instead of acting on it'
+  );
+  assert(
+    App.prototype.injectedInput.call(guard, parseKeys(Buffer.from('\r'))) === true,
+    'App also drops the trailing CR that follows an injected line'
+  );
+
+  const typing = { startedAt: Date.now() - 5000, inputMutedUntil: 0, promptState: null };
+  assert(App.prototype.injectedInput.call(typing, ['j']) === false, 'App still accepts a single key press');
+  assert(App.prototype.injectedInput.call(typing, ['enter']) === false, 'App still accepts enter on its own');
+  assert(
+    App.prototype.injectedInput.call({ startedAt: Date.now(), inputMutedUntil: 0, promptState: null }, ['enter']) === true,
+    'App ignores keys that arrive before the TUI has settled'
+  );
+  assert(
+    App.prototype.injectedInput.call(
+      { startedAt: Date.now() - 5000, inputMutedUntil: 0, promptState: { buffer: '' } },
+      parseKeys(Buffer.from('pasted-api-key-value'))
+    ) === false,
+    'App still lets text be pasted into a prompt'
+  );
+}
+
 function main() {
   process.stdout.write('\x1b[1m\x1b[35m=== Herdr-Launcher Self-Test Suite ===\x1b[0m\n');
   const start = Date.now();
@@ -672,6 +796,7 @@ function main() {
     testMouseInput();
     testTabWatcherAndAutoDock();
     testDeadProcessRecoveryAndOrphanAdoption();
+    testLauncherLiveness();
   } catch (err) {
     failed += 1;
     errors.push(`Unhandled error: ${err.message}\n${err.stack}`);

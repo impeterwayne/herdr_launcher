@@ -32,8 +32,8 @@ function main() {
   const inTab = panes.filter((p) => p.tab_id === focused.tab_id);
   const mine = inTab.filter(isOurs);
 
-  const deadMine = mine.filter((p) => h.paneIsIdleShell(p.pane_id));
-  const liveMine = mine.filter((p) => !h.paneIsIdleShell(p.pane_id));
+  const deadMine = mine.filter((p) => dock.launcherIsDead(p.pane_id, p));
+  const liveMine = mine.filter((p) => dock.launcherIsLive(p.pane_id, p));
 
   if (deadMine.length > 0 && liveMine.length > 0) {
     for (const p of deadMine) {
@@ -55,9 +55,10 @@ function main() {
         command: dock.launchCommand({ paneId: target.pane_id }),
       });
     }
-    const result = dock.adopt({ paneId: target.pane_id });
+    const result = dock.adopt({ paneId: target.pane_id, pane: target });
     h.focusPane(target.pane_id);
     startWatcher();
+    if (result.skipped) return report({ action: 'focused', pane: target.pane_id, reason: result.skipped });
     return report({ action: 'adopted', ...result });
   }
 

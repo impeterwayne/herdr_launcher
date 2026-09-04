@@ -30,6 +30,10 @@ function runHelper(script, args, env = {}) {
   let fd = 'ignore';
   try {
     fs.mkdirSync(path.dirname(LOG), { recursive: true });
+    // Stamped so a launch can be placed in time later: the helper's own output
+    // goes straight to this fd, and telling a menu press apart from a stray one
+    // means knowing when it happened.
+    fs.appendFileSync(LOG, `${new Date().toISOString()} ${selfPaneId() || '?'} run ${script} ${args.join(' ')}\n`);
     fd = fs.openSync(LOG, 'a');
   } catch (_) {
 
