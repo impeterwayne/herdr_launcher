@@ -164,6 +164,7 @@ function openspecView() {
     title: 'OpenSpec',
     actions: [
       { key: 'enter', label: 'deploy' },
+      { key: 'u', label: 'update' },
       { key: 'r', label: 'reload' },
       { key: 'escape', label: 'close' },
     ],
@@ -171,31 +172,31 @@ function openspecView() {
     refresh(app) {
       const worktree = findRepoRoot(app.ctx.cwd) || app.ctx.cwd;
       this.worktree = worktree;
-      const root = openspec.toolkitRoot();
+      const available = openspec.isAvailable();
       const items = [];
-      if (!root) {
-        items.push({ type: 'group', label: 'SOURCE NOT FOUND' });
+      if (!available) {
+        items.push({ type: 'group', label: 'CLI NOT FOUND' });
         items.push({
           type: 'item',
           icon: icon('empty'),
-          label: 'set root in openspec.json',
+          label: 'install: npm i -g @fission-ai/openspec',
           disabled: true,
-          hint: shorten(configDir()),
+          hint: 'cli required',
         });
       } else {
         items.push({ type: 'group', label: 'COMPONENTS' });
-        for (const component of openspec.status(worktree, root)) {
+        for (const component of openspec.status(worktree)) {
           items.push({
             type: 'item',
             label: component.name.replace(/^OpenSpec /, '').replace(/ OpenSpec/, ''),
             icon: icon(component.deployed ? 'done' : 'add'),
             iconColor: sgr(component.deployed ? 'done' : 'add'),
-            hint: component.deployed ? 'deployed' : component.available ? 'missing' : 'no source',
+            hint: component.deployed ? 'deployed' : 'missing',
             disabled: !component.available,
             run: (a) => {
               const apply = () => {
                 const action = component.deployed ? openspec.remove : openspec.deploy;
-                const result = action(worktree, component, root);
+                const result = action(worktree, component);
                 a.setStatus(
                   result.ok
                     ? `${component.deployed ? 'removed' : 'deployed'} ${component.id}`
@@ -212,6 +213,23 @@ function openspecView() {
         }
       }
       this.list.setItems(items);
+    },
+    onKey(key, app) {
+      if (key === 'u') {
+        if (!openspec.isAvailable()) {
+          app.setStatus('openspec CLI not found', 'error');
+          return true;
+        }
+        const result = openspec.update(this.worktree || app.ctx.cwd);
+        app.setStatus(
+          result.ok ? 'updated OpenSpec instructions' : (result.error || 'update failed'),
+          result.ok ? 'ok' : 'error'
+        );
+        this.refresh(app);
+        app.render();
+        return true;
+      }
+      return false;
     },
     render(height, width) {
       return this.list.render(height, width);

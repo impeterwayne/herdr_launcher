@@ -161,9 +161,15 @@ function suggestTargets(worktreePath, managed = []) {
 
 function browseFolder(initialDir) {
   if (process.platform === 'win32') {
+    const cleanDir =
+      initialDir && typeof initialDir === 'string'
+        ? initialDir.startsWith('\\\\?\\')
+          ? initialDir.slice(4)
+          : initialDir
+        : initialDir;
     const target =
-      initialDir && fs.existsSync(initialDir)
-        ? initialDir
+      cleanDir && fs.existsSync(cleanDir)
+        ? cleanDir
         : fs.existsSync('D:\\')
           ? 'D:\\'
           : '';
@@ -173,6 +179,13 @@ function browseFolder(initialDir) {
       $target = '${initial}'
       $top = New-Object System.Windows.Forms.Form
       $top.TopMost = $true
+      $top.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+      $top.Size = New-Object System.Drawing.Size(1, 1)
+      $top.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+      $top.Opacity = 0.01
+      $top.Show()
+      $top.BringToFront()
+      $top.Activate()
       $selected = $null
       try {
         Add-Type -TypeDefinition @'
@@ -220,14 +233,20 @@ public class FolderBrowserExpanded {
     private static int Callback(IntPtr hwnd, uint uMsg, IntPtr lParam, IntPtr lpData) {
         if (uMsg == BFFM_INITIALIZED) {
             try {
-                if (System.IO.Directory.Exists("D:\\\\")) {
-                    SendMessage(hwnd, BFFM_SETEXPANDED, (IntPtr)1, "D:\\\\");
+                string root = null;
+                if (!string.IsNullOrEmpty(_initialPath) && System.IO.Directory.Exists(_initialPath)) {
+                    root = System.IO.Path.GetPathRoot(_initialPath);
+                } else if (System.IO.Directory.Exists("D:\\\\")) {
+                    root = "D:\\\\";
+                }
+                if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root)) {
+                    SendMessage(hwnd, BFFM_SETEXPANDED, (IntPtr)1, root);
                 }
                 if (!string.IsNullOrEmpty(_initialPath) && System.IO.Directory.Exists(_initialPath)) {
                     SendMessage(hwnd, BFFM_SETEXPANDED, (IntPtr)1, _initialPath);
                     SendMessage(hwnd, BFFM_SETSELECTIONW, (IntPtr)1, _initialPath);
-                } else if (System.IO.Directory.Exists("D:\\\\")) {
-                    SendMessage(hwnd, BFFM_SETSELECTIONW, (IntPtr)1, "D:\\\\");
+                } else if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root)) {
+                    SendMessage(hwnd, BFFM_SETSELECTIONW, (IntPtr)1, root);
                 }
             } catch {}
         }
@@ -261,7 +280,7 @@ public class FolderBrowserExpanded {
         $f = New-Object System.Windows.Forms.FolderBrowserDialog
         $f.Description = 'Select folder to link as symlink'
         $f.ShowNewFolderButton = $true
-        if ($target) { $f.SelectedPath = $target }
+        if ($target -and (Test-Path $target)) { $f.SelectedPath = $target }
         if ($f.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) {
           $selected = $f.SelectedPath
         }
@@ -270,15 +289,16 @@ public class FolderBrowserExpanded {
       if ($selected) {
         Write-Output $selected
       }
+      $top.Close()
       $top.Dispose()
     `;
     try {
       const res = spawnSync('powershell.exe', ['-NoProfile', '-STA', '-Command', psScript], {
         encoding: 'utf8',
-        windowsHide: true,
+        windowsHide: false,
         timeout: 120000,
       });
-      const selected = (res.stdout || '').trim().split(/\\r?\\n/).filter(Boolean).pop();
+      const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
       return selected && fs.existsSync(selected) ? path.resolve(selected) : null;
     } catch (_) {
       return null;

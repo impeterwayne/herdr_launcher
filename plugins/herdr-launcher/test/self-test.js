@@ -302,26 +302,41 @@ function testViewComponents() {
   );
 
   const openspecLib = require('../lib/openspec');
+  assert(typeof openspecLib.isAvailable === 'function', 'openspec.isAvailable is exported');
+  assert(typeof openspecLib.cliPath === 'function', 'openspec.cliPath is exported');
   assert(typeof openspecLib.toolkitRoot === 'function', 'openspec.toolkitRoot is exported');
-  const resolvedToolkit = openspecLib.toolkitRoot();
-  assert(Boolean(resolvedToolkit && fs.existsSync(resolvedToolkit)), 'openspec.toolkitRoot resolves bundled toolkit path');
+  assert(typeof openspecLib.deploy === 'function', 'openspec.deploy is exported');
+  assert(typeof openspecLib.remove === 'function', 'openspec.remove is exported');
+  assert(typeof openspecLib.update === 'function', 'openspec.update is exported');
   const openspecStatus = openspecLib.status(ROOT);
   assert(openspecStatus.length === 5, 'openspec.status returns all 5 components');
-  assert(openspecStatus.every((c) => c.available), 'all openspec components are available from bundled toolkit');
+  if (openspecLib.isAvailable()) {
+    assert(openspecStatus.every((c) => c.available), 'all openspec components are available when CLI is installed');
+  } else {
+    assert(openspecStatus.every((c) => !c.available), 'all openspec components are unavailable when CLI is missing');
+  }
 
   const openspecDef = views.byKey('openspec');
   assert(openspecDef?.popupEntrypoint === 'openspec-popup', 'openspec has popupEntrypoint openspec-popup');
   const openspecView = openspecDef.view();
   assert(openspecView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'openspecView action footer includes [esc close]');
+  assert(openspecView.actions.some((a) => a.key === 'u' && a.label === 'update'), 'openspecView action footer includes [u update]');
   openspecView.refresh(mockApp);
-  assert(
-    !openspecView.list.items.some((i) => i.label === 'SOURCE NOT FOUND'),
-    'openspecView does not show SOURCE NOT FOUND when bundled toolkit is present'
-  );
-  assert(
-    openspecView.list.items.some((i) => i.label && i.label.includes('Core Infrastructure')),
-    'openspecView renders Core Infrastructure component'
-  );
+  if (openspecLib.isAvailable()) {
+    assert(
+      !openspecView.list.items.some((i) => i.label === 'CLI NOT FOUND'),
+      'openspecView does not show CLI NOT FOUND when CLI is installed'
+    );
+    assert(
+      openspecView.list.items.some((i) => i.label && i.label.includes('Core Infrastructure')),
+      'openspecView renders Core Infrastructure component'
+    );
+  } else {
+    assert(
+      openspecView.list.items.some((i) => i.label === 'CLI NOT FOUND'),
+      'openspecView shows CLI NOT FOUND when CLI is missing'
+    );
+  }
 
   const planeDef = views.byKey('plane');
   assert(planeDef?.popupEntrypoint === 'plane-popup', 'plane has popupEntrypoint plane-popup');

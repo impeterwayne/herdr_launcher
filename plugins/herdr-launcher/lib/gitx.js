@@ -17,6 +17,7 @@ function excludePath(worktreePath) {
     const rel = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], {
       cwd: worktreePath,
       encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 3000,
       windowsHide: true,
     }).trim();

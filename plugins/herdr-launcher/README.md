@@ -175,9 +175,11 @@ Scans sibling git worktrees and suggests links for heavy shared directories (`no
 - Custom link targets can be defined in `<config-dir>/symlinks.json`.
 
 ### OpenSpec (`prefix+alt+s`)
-Deploys and maintains the bundled OpenSpec toolkit components and ensures `.git/info/exclude` ignores generated artifacts.
-- Bundled toolkit located at `toolkits/OpenSpec`.
-- Override toolkit root via `HERDR_LAUNCHER_OPENSPEC_ROOT` or `<config-dir>/openspec.json`.
+Initializes and maintains [OpenSpec](https://github.com/Fission-AI/OpenSpec) components for the current repository using the official `@fission-ai/openspec` CLI directly.
+- Detects whether `openspec` CLI is available on PATH.
+- Supports initializing Core (`openspec/config.yaml`), Antigravity workflows (`.agent/`), Claude Code commands & skills (`.claude/`), Codex skills (`.codex/`), and OpenCode commands & skills (`.opencode/`).
+- Never excludes `openspec/` from Git, preserving Spec-Driven Development (SDD) source control integrity.
+- Keybinding chips: `[⏎ deploy]` `[u update]` `[r reload]` `[esc close]`.
 
 ### Plane Tasks & Evidence Sync (`prefix+alt+p`)
 View Plane issues and selectively sync tasks and evidence media into offline markdown documentation (`plane/TASK_LIST.md`).

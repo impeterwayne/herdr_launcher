@@ -19,7 +19,7 @@ Khởi chạy các coding agent AI ở chế độ tự động hóa ("YOLO mode
 - **Hỗ trợ thao tác Chuột & Bàn phím đầy đủ**: Điều hướng bằng phím mũi tên, phím Vim (`j`/`k`), click chuột, double-click và cuộn chuột mượt mà.
 - **Quản lý Symlink thông minh**: Tự động phát hiện các Git worktree lân cận và tạo liên kết (NTFS junction trên Windows không cần quyền Admin, Symlink trên Unix) cho các thư mục nặng như `node_modules`, `build`, `.venv`, `.gradle`.
 - **Tích hợp Plane Tasks & Evidence Sync**: Xem danh sách công việc trên Plane, tải về tài liệu Markdown ngoại tuyến và tự động tải ảnh/video bằng chứng vào thư mục dự án.
-- **Tích hợp bộ công cụ OpenSpec**: Cài đặt và quản lý các thành phần OpenSpec đi kèm, tự động cập nhật `.git/info/exclude`.
+- **Tích hợp OpenSpec**: Thiết lập và quản lý các thành phần OpenSpec cho dự án trực tiếp qua OpenSpec CLI chính thức, bảo toàn quyền theo dõi của Git cho SDD.
 - **Chế độ Ngăn xếp (Stack Mode)**: Phóng to khung làm việc chính chiếm ~90% chiều rộng tab trong khi vẫn giữ thanh launcher cố định bên phải.
 - **Trình mở ứng dụng Desktop**: Mở nhanh VS Code, Antigravity IDE, Android Studio, File Explorer / Finder tại thư mục hiện hành.
 
@@ -184,9 +184,11 @@ Quét các git worktree liền kề và gợi ý liên kết các thư mục n�
 - Bạn có thể khai báo thêm các đường dẫn liên kết tùy chỉnh trong tệp `<config-dir>/symlinks.json`.
 
 ### OpenSpec (`prefix+alt+s`)
-Triển khai và bảo trì các thành phần của bộ công cụ OpenSpec đi kèm, đồng thời tự động cập nhật `.git/info/exclude` để Git bỏ qua các file artifact phát sinh.
-- Bộ công cụ đi kèm nằm tại `toolkits/OpenSpec`.
-- Bạn có thể ghi đè thư mục gốc của bộ công cụ qua biến môi trường `HERDR_LAUNCHER_OPENSPEC_ROOT` hoặc tệp `<config-dir>/openspec.json`.
+Khởi tạo và quản lý các thành phần [OpenSpec](https://github.com/Fission-AI/OpenSpec) cho kho lưu trữ hiện tại trực tiếp qua `@fission-ai/openspec` CLI.
+- Tự động nhận diện `openspec` CLI có sẵn trên hệ thống hay không (không dùng fallback sao chép tệp mẫu cục bộ).
+- Hỗ trợ thiết lập Core (`openspec/config.yaml`), Antigravity workflows (`.agent/`), Claude Code commands & skills (`.claude/`), Codex skills (`.codex/`), và OpenCode commands & skills (`.opencode/`).
+- Tuyệt đối không thêm `openspec/` vào `.git/info/exclude`, bảo đảm tính toàn vẹn của mô hình Spec-Driven Development (SDD) trên Git.
+- Các phím thao tác: `[⏎ deploy]` `[u update]` `[r reload]` `[esc close]`.
 
 ### Plane Tasks & Đồng bộ Bằng chứng (`prefix+alt+p`)
 Xem các issue trên Plane, đồng bộ có chọn lọc các tác vụ và tải dữ liệu bằng chứng (hình ảnh, video đính kèm) thành tài liệu Markdown ngoại tuyến (`plane/TASK_LIST.md`).
