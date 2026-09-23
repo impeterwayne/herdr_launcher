@@ -26,6 +26,8 @@ const TABLE = {
   add: ['\u{EA60}', '+', 'cod-add', '#9ECE6A'],
   done: ['\u{F00C}', 'ok', 'fa-check', '#9ECE6A'],
   issue: ['\u{EB0C}', '#', 'cod-issues', '#BB9AF7'],
+  search: ['\u{EA6D}', '?', 'cod-search', '#7DCFFF'],
+  edit: ['\u{EA73}', 'ed', 'cod-edit', '#E0AF68'],
   empty: ['\u{EC07}', '..', 'cod-circle_small'],
   alert: ['\u{F421}', '!!', 'oct-alert', '#F7768E'],
 };

@@ -184,8 +184,10 @@ Initializes and maintains [OpenSpec](https://github.com/Fission-AI/OpenSpec) com
 ### Plane Tasks & Evidence Sync (`prefix+alt+p`)
 View Plane issues and selectively sync tasks and evidence media into offline markdown documentation inside `plane/` (`plane/tasklist.md` / `plane/TASK_LIST.md`).
 - **All-Worktree Synchronization**: Automatically shares and links `plane/` (including `plane/tasklist.md` and evidence media) across all sibling git worktrees.
+- **Fast Search & Filter (`/`)**: Live-search projects by name or key identifier, and live-search issues by title, sequence number (e.g. `101`), tag (`COD-101`), or state. Press `c` or `esc` to clear filters.
+- **Direct Project ID Input (`i`)**: Enter or paste a project UUID or identifier directly to link without scrolling through large project lists.
 - **Interactive API Key Setup (`k`)**: Securely prompts and stores your API key in `plane.json`.
-- **Interactive Project Switcher (`p`)**: Browse and map Plane projects to your workspace (automatically shared across all worktrees).
+- **Interactive Project Switcher (`p`)**: Browse, search, and map Plane projects to your workspace (automatically shared across all worktrees).
 - **Selective Crawling (`s`)**: Choose task scope (`Backlog + Todo`, `Active Tasks`, `All Tasks`, etc.). Crawls screenshots and videos into `plane/evidence/<taskId>/`, generates `plane/tasklist.md` with offline preview links, and updates `.git/info/exclude` automatically across all worktrees.
 
 ---

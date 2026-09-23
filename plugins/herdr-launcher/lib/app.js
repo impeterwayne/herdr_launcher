@@ -113,6 +113,7 @@ class App {
       message,
       buffer: (opts && opts.defaultValue) || '',
       secret: Boolean(opts && opts.secret),
+      onChange: typeof (opts && opts.onChange) === 'function' ? opts.onChange : null,
       onDone: doneCb,
     };
     const display = this.promptState.secret
@@ -215,6 +216,9 @@ class App {
         this.promptState.buffer = this.promptState.buffer.slice(0, -1);
         const display = secret ? '*'.repeat(this.promptState.buffer.length) : this.promptState.buffer;
         this.setStatus(`${message}: ${display}█`, 'info');
+        if (this.promptState.onChange) {
+          try { this.promptState.onChange(this.promptState.buffer); } catch (_) {}
+        }
         return this.render();
       }
       if (
@@ -233,6 +237,9 @@ class App {
         this.promptState.buffer += key;
         const display = secret ? '*'.repeat(this.promptState.buffer.length) : this.promptState.buffer;
         this.setStatus(`${message}: ${display}█`, 'info');
+        if (this.promptState.onChange) {
+          try { this.promptState.onChange(this.promptState.buffer); } catch (_) {}
+        }
         return this.render();
       }
       return undefined;

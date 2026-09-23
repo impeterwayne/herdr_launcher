@@ -346,9 +346,13 @@ function testViewComponents() {
   assert(planeView.actions.some((a) => a.key === 'p' && a.label === 'project'), 'planeView action footer includes [p project]');
   assert(planeView.actions.some((a) => a.key === 'k' && a.label === 'api key'), 'planeView action footer includes [k api key]');
   assert(planeView.actions.some((a) => a.key === 'enter' && a.label === 'open'), 'planeView action footer includes [enter open]');
+  assert(planeView.actions.some((a) => a.key === '/' && a.label === 'search'), 'planeView action footer includes [/ search]');
   assert(typeof planeView.loadProjects === 'function', 'planeView supports loadProjects for parent workspace');
   assert(typeof planeView.loadCrawlOptions === 'function', 'planeView supports loadCrawlOptions for category selection');
   assert(typeof planeView.inputApiKey === 'function', 'planeView supports inputApiKey for entering and saving API key');
+  assert(typeof planeView.inputProjectId === 'function', 'planeView supports inputProjectId for direct project linking');
+  assert(typeof planeView.promptProjectSearch === 'function', 'planeView supports promptProjectSearch');
+  assert(typeof planeView.promptIssueSearch === 'function', 'planeView supports promptIssueSearch');
 
   // Test in-app prompt
   const rootMenu = { title: 'Launcher', render: () => [] };
@@ -375,6 +379,14 @@ function testViewComponents() {
   app.handleKey('enter');
   assert(promptSubmitted === 'initial_val', 'app.handleKey enter submits prompt value');
   assert(app.promptState === null, 'promptState is cleared after submit');
+
+  let liveChanges = [];
+  app.prompt('Search test', { defaultValue: '', onChange: (val) => liveChanges.push(val) }, () => {});
+  app.handleKey('a');
+  app.handleKey('b');
+  app.handleKey('backspace');
+  app.handleKey('enter');
+  assert(liveChanges.join(',') === 'a,ab,a', 'app.prompt supports live onChange updates');
 }
 
 async function testPlaneConfig() {
@@ -535,6 +547,41 @@ async function testPlaneConfig() {
       ['all']
     );
     assert(mdEvidence.includes('./evidence/'), 'generateTaskListMD formats evidence with ./evidence by default');
+
+    // Test findProject, filterProjects, and filterIssues
+    assert(typeof plane.findProject === 'function', 'plane.findProject is exported');
+    assert(typeof plane.filterProjects === 'function', 'plane.filterProjects is exported');
+    assert(typeof plane.filterIssues === 'function', 'plane.filterIssues is exported');
+
+    const sampleProjs = [
+      { id: 'uuid-1', name: 'Coding Space', identifier: 'COD' },
+      { id: 'uuid-2', name: 'Mobile Android App', identifier: 'AND' },
+      { id: 'uuid-3', name: 'Web Portal', identifier: 'WEB' },
+    ];
+
+    assert(plane.findProject(sampleProjs, 'uuid-1')?.name === 'Coding Space', 'findProject finds by exact id');
+    assert(plane.findProject(sampleProjs, 'cod')?.name === 'Coding Space', 'findProject finds by identifier case-insensitive');
+    assert(plane.findProject(sampleProjs, 'Mobile Android App')?.id === 'uuid-2', 'findProject finds by project name');
+    assert(plane.findProject(sampleProjs, 'Portal')?.id === 'uuid-3', 'findProject finds by partial project name');
+    assert(plane.findProject(sampleProjs, 'nonexistent') === null, 'findProject returns null when no match');
+
+    const filteredProjs = plane.filterProjects(sampleProjs, 'and');
+    assert(filteredProjs.length === 1 && filteredProjs[0].id === 'uuid-2', 'filterProjects filters by query substring');
+
+    const sampleIssueList = [
+      { sequence: 101, name: 'Fix Crash on Login', identifier: 'COD', stateName: 'Backlog' },
+      { sequence: 102, name: 'Add Search Bar', identifier: 'COD', stateName: 'In Progress' },
+      { sequence: 201, name: 'Billing Gateway Bug', identifier: 'AND', stateName: 'Todo' },
+    ];
+
+    const searchLogin = plane.filterIssues(sampleIssueList, 'login');
+    assert(searchLogin.length === 1 && searchLogin[0].sequence === 101, 'filterIssues filters by task title');
+    const searchSeq = plane.filterIssues(sampleIssueList, '102');
+    assert(searchSeq.length === 1 && searchSeq[0].sequence === 102, 'filterIssues filters by sequence number');
+    const searchTag = plane.filterIssues(sampleIssueList, 'and-201');
+    assert(searchTag.length === 1 && searchTag[0].sequence === 201, 'filterIssues filters by full tag');
+    const searchState = plane.filterIssues(sampleIssueList, 'progress');
+    assert(searchState.length === 1 && searchState[0].sequence === 102, 'filterIssues filters by state name');
 
     // Test syncProject across all worktrees with mocked fetch
     const origFetch = globalThis.fetch;

@@ -242,9 +242,15 @@ function planeView() {
   let inFlight = false;
   let lastKey = '';
   let loaded = false;
+  let projectFilter = '';
+  let issueFilter = '';
+  let cachedProjects = [];
+  let cachedIssues = [];
 
-  const defaultActions = [
+  const getIssueActions = () => [
     { key: 'enter', label: 'open' },
+    { key: '/', label: 'search' },
+    ...(issueFilter ? [{ key: 'c', label: 'clear' }] : []),
     { key: 's', label: 'sync' },
     { key: 'p', label: 'project' },
     { key: 'k', label: 'api key' },
@@ -252,8 +258,11 @@ function planeView() {
     { key: 'escape', label: 'close' },
   ];
 
-  const selectProjectActions = [
+  const getSelectProjectActions = () => [
     { key: 'enter', label: 'select' },
+    { key: '/', label: 'search' },
+    ...(projectFilter ? [{ key: 'c', label: 'clear' }] : []),
+    { key: 'i', label: 'input id' },
     { key: 'k', label: 'api key' },
     { key: 'r', label: 'reload' },
     { key: 'escape', label: 'back' },
@@ -261,6 +270,7 @@ function planeView() {
 
   const notConfiguredActions = [
     { key: 'enter', label: 'set key' },
+    { key: 'i', label: 'input id' },
     { key: 'k', label: 'api key' },
     { key: 'r', label: 'reload' },
     { key: 'escape', label: 'close' },
@@ -273,7 +283,7 @@ function planeView() {
 
   const viewObj = {
     title: 'Plane',
-    actions: defaultActions,
+    actions: getIssueActions(),
     list: new List([{ type: 'item', icon: icon('empty'), label: 'loading…', disabled: true }]),
     inputApiKey(app, cfg) {
       const currentKey = (cfg && cfg.apiKey) || '';
@@ -317,10 +327,220 @@ function planeView() {
         });
       }
     },
+    inputProjectId(app, cfg) {
+      if (!app || typeof app.prompt !== 'function') return;
+      app.prompt('Enter Project ID, Slug, or Key (e.g. UUID, COD)', { defaultValue: '' }, (entered) => {
+        if (!entered || !entered.trim()) {
+          if (app) app.setStatus('project ID input cancelled', 'info');
+          if (app && app.render) app.render();
+          return;
+        }
+        const val = entered.trim();
+        const matched = plane.findProject(cachedProjects, val);
+        const chosenId = matched ? matched.id : val;
+        const displayName = matched ? `${matched.name} [${matched.identifier || matched.id}]` : val;
+
+        const target = cfg.parentRoot || (app.ctx && app.ctx.cwd) || process.cwd();
+        plane.saveWorkspaceProjectId(target, chosenId);
+        if (app) app.setStatus(`linked project "${displayName}" · select tasks to crawl`, 'ok');
+        const updatedCfg = plane.config(target);
+        this.loadCrawlOptions(app, updatedCfg);
+      });
+    },
+    promptProjectSearch(app, cfg) {
+      if (!app || typeof app.prompt !== 'function') return;
+      app.prompt(
+        'Search projects',
+        {
+          defaultValue: projectFilter,
+          onChange: (q) => {
+            projectFilter = (q || '').trim();
+            this.actions = getSelectProjectActions();
+            this.renderProjects(app, cfg);
+          },
+        },
+        (confirmed) => {
+          if (confirmed !== null) {
+            projectFilter = (confirmed || '').trim();
+            if (app) {
+              app.setStatus(projectFilter ? `filtering projects by "${projectFilter}"` : 'all projects', 'info');
+            }
+          }
+          this.actions = getSelectProjectActions();
+          this.renderProjects(app, cfg);
+        }
+      );
+    },
+    promptIssueSearch(app, cfg) {
+      if (!app || typeof app.prompt !== 'function') return;
+      app.prompt(
+        'Search issues',
+        {
+          defaultValue: issueFilter,
+          onChange: (q) => {
+            issueFilter = (q || '').trim();
+            this.actions = getIssueActions();
+            this.renderIssues(app, cfg);
+          },
+        },
+        (confirmed) => {
+          if (confirmed !== null) {
+            issueFilter = (confirmed || '').trim();
+            if (app) {
+              app.setStatus(issueFilter ? `filtering issues by "${issueFilter}"` : 'all issues', 'info');
+            }
+          }
+          this.actions = getIssueActions();
+          this.renderIssues(app, cfg);
+        }
+      );
+    },
+    renderProjects(app, cfg) {
+      const parentName = cfg.parentRoot ? path.basename(cfg.parentRoot) : 'Herd';
+      const filterSuffix = projectFilter ? ` (filter: "${projectFilter}")` : '';
+      const items = [{ type: 'group', label: `SELECT PROJECT${filterSuffix} · ${parentName}` }];
+
+      items.push({
+        type: 'item',
+        label: 'Input Project ID / Key directly…',
+        icon: icon('edit'),
+        iconColor: sgr('edit'),
+        hint: '[press i]',
+        run: (a) => this.inputProjectId(a, cfg),
+      });
+
+      if (projectFilter) {
+        items.push({
+          type: 'item',
+          label: `Clear search filter ("${projectFilter}")`,
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: '[press c]',
+          run: (a) => {
+            projectFilter = '';
+            this.actions = getSelectProjectActions();
+            this.renderProjects(a, cfg);
+            a.setStatus('search filter cleared', 'info');
+            a.render();
+          },
+        });
+      } else {
+        items.push({
+          type: 'item',
+          label: 'Search projects…',
+          icon: icon('search'),
+          iconColor: sgr('search'),
+          hint: '[press /]',
+          run: (a) => this.promptProjectSearch(a, cfg),
+        });
+      }
+
+      const filtered = plane.filterProjects(cachedProjects, projectFilter);
+      for (const proj of filtered) {
+        const isCurrent = proj.id === cfg.projectId;
+        items.push({
+          type: 'item',
+          label: proj.name,
+          icon: icon(isCurrent ? 'done' : 'plane'),
+          iconColor: sgr(isCurrent ? 'done' : 'plane'),
+          hint: `[${proj.identifier || ''}]`,
+          itemData: { type: 'project', project: proj },
+          run: (a) => {
+            const target = cfg.parentRoot || (a.ctx && a.ctx.cwd) || process.cwd();
+            plane.saveWorkspaceProjectId(target, proj.id);
+            a.setStatus(`linked "${proj.name}" · select tasks to crawl`, 'info');
+            const updatedCfg = plane.config(target);
+            this.loadCrawlOptions(a, updatedCfg);
+          },
+        });
+      }
+
+      if (!filtered.length) {
+        items.push({
+          type: 'item',
+          icon: icon('empty'),
+          label: projectFilter ? `(no projects matching "${projectFilter}")` : '(no projects found)',
+          disabled: true,
+        });
+      }
+
+      items.push({
+        type: 'item',
+        label: 'Update API Key…',
+        icon: icon('plane'),
+        iconColor: sgr('plane'),
+        hint: '[press k]',
+        run: (a) => this.inputApiKey(a, cfg),
+      });
+
+      this.list.setItems(items);
+      if (app && app.render) app.render();
+    },
+    renderIssues(app, cfg) {
+      const filtered = plane.filterIssues(cachedIssues, issueFilter);
+      const filterSuffix = issueFilter
+        ? ` (${filtered.length} of ${cachedIssues.length} matching "${issueFilter}")`
+        : ` (${cachedIssues.length})`;
+      const items = [{ type: 'group', label: `ISSUES${filterSuffix}` }];
+
+      if (issueFilter) {
+        items.push({
+          type: 'item',
+          label: `Clear search filter ("${issueFilter}")`,
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          hint: '[press c]',
+          run: (a) => {
+            issueFilter = '';
+            this.actions = getIssueActions();
+            this.renderIssues(a, cfg);
+            a.setStatus('search filter cleared', 'info');
+            a.render();
+          },
+        });
+      }
+
+      for (const issue of filtered.slice(0, 100)) {
+        items.push({
+          type: 'item',
+          label: `${issue.identifier ? `${issue.identifier}-` : ''}${issue.sequence} ${issue.name}`,
+          icon: icon('issue'),
+          iconColor: sgr('issue'),
+          hint: issue.stateName,
+          danger: issue.priority === 'urgent',
+          run: (a) => {
+            openBrowser(plane.webUrl(issue, cfg));
+            a.setStatus(`opened ${issue.sequence} in browser`, 'ok');
+          },
+        });
+      }
+
+      if (filtered.length === 0) {
+        items.push({
+          type: 'item',
+          icon: icon('empty'),
+          label: issueFilter ? `(no issues matching "${issueFilter}")` : '(no issues)',
+          disabled: true,
+        });
+      }
+
+      this.list.setItems(items);
+      if (app && app.render) app.render();
+    },
     loadProjects(app, cfg) {
       mode = 'select-project';
-      this.actions = selectProjectActions;
-      this.list.setItems([{ type: 'item', icon: icon('empty'), label: 'loading projects…', disabled: true }]);
+      this.actions = getSelectProjectActions();
+      this.list.setItems([
+        { type: 'item', icon: icon('empty'), label: 'loading projects…', disabled: true },
+        {
+          type: 'item',
+          label: 'Input Project ID / Key directly…',
+          icon: icon('edit'),
+          iconColor: sgr('edit'),
+          hint: '[press i]',
+          run: (a) => this.inputProjectId(a, cfg),
+        },
+      ]);
       if (app && app.render) app.render();
 
       if (!cfg.apiKey) {
@@ -335,6 +555,14 @@ function planeView() {
             hint: '[press k / enter]',
             run: (a) => this.inputApiKey(a, cfg),
           },
+          {
+            type: 'item',
+            label: 'Input Project ID / Key directly…',
+            icon: icon('edit'),
+            iconColor: sgr('edit'),
+            hint: '[press i]',
+            run: (a) => this.inputProjectId(a, cfg),
+          },
         ]);
         if (app && app.render) app.render();
         return;
@@ -343,44 +571,21 @@ function planeView() {
       plane
         .projects(cfg)
         .then((projs) => {
-          const parentName = cfg.parentRoot ? path.basename(cfg.parentRoot) : 'Herd';
-          const items = [{ type: 'group', label: `SELECT PROJECT · ${parentName}` }];
-          for (const proj of projs) {
-            const isCurrent = proj.id === cfg.projectId;
-            items.push({
-              type: 'item',
-              label: proj.name,
-              icon: icon(isCurrent ? 'done' : 'plane'),
-              iconColor: sgr(isCurrent ? 'done' : 'plane'),
-              hint: `[${proj.identifier || ''}]`,
-              itemData: { type: 'project', project: proj },
-              run: (a) => {
-                const target = cfg.parentRoot || (a.ctx && a.ctx.cwd) || process.cwd();
-                plane.saveWorkspaceProjectId(target, proj.id);
-                a.setStatus(`linked "${proj.name}" · select tasks to crawl`, 'info');
-                const updatedCfg = plane.config(target);
-                this.loadCrawlOptions(a, updatedCfg);
-              },
-            });
-          }
-          if (!projs.length) {
-            items.push({ type: 'item', icon: icon('empty'), label: '(no projects found)', disabled: true });
-          }
-          items.push({
-            type: 'item',
-            label: 'Update API Key…',
-            icon: icon('plane'),
-            iconColor: sgr('plane'),
-            hint: '[press k]',
-            run: (a) => this.inputApiKey(a, cfg),
-          });
-          this.list.setItems(items);
-          if (app && app.render) app.render();
+          cachedProjects = projs || [];
+          this.renderProjects(app, cfg);
         })
         .catch((err) => {
           this.list.setItems([
             { type: 'group', label: 'ERROR LOADING PROJECTS' },
             { type: 'item', icon: icon('alert'), label: err.message.split('\n')[0], disabled: true },
+            {
+              type: 'item',
+              label: 'Input Project ID / Key directly…',
+              icon: icon('edit'),
+              iconColor: sgr('edit'),
+              hint: '[press i]',
+              run: (a) => this.inputProjectId(a, cfg),
+            },
             {
               type: 'item',
               icon: icon('plane'),
@@ -478,7 +683,7 @@ function planeView() {
       const target = cfg.parentRoot || cwd;
       app.setStatus(`crawling ${label} tasks & evidence…`, 'info');
       mode = 'issues';
-      this.actions = defaultActions;
+      this.actions = getIssueActions();
       this.refresh(app, { force: true });
       plane
         .syncProject(target, cfg, { categories }, (msg) => {
@@ -496,19 +701,58 @@ function planeView() {
         });
     },
     onKey(key, app) {
+      const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
+      const cfg = plane.config(cwd);
+
       if (key === 'k') {
-        const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
-        const cfg = plane.config(cwd);
         this.inputApiKey(app, cfg);
         return true;
       }
+      if (key === 'i') {
+        this.inputProjectId(app, cfg);
+        return true;
+      }
+      if (key === '/') {
+        if (mode === 'select-project') {
+          this.promptProjectSearch(app, cfg);
+          return true;
+        }
+        if (mode === 'issues') {
+          this.promptIssueSearch(app, cfg);
+          return true;
+        }
+      }
+      if (key === 'c') {
+        if (mode === 'select-project' && projectFilter) {
+          projectFilter = '';
+          this.actions = getSelectProjectActions();
+          this.renderProjects(app, cfg);
+          app.setStatus('search filter cleared', 'info');
+          app.render();
+          return true;
+        }
+        if (mode === 'issues' && issueFilter) {
+          issueFilter = '';
+          this.actions = getIssueActions();
+          this.renderIssues(app, cfg);
+          app.setStatus('search filter cleared', 'info');
+          app.render();
+          return true;
+        }
+      }
       if (mode === 'select-project' || mode === 'select-crawl-scope') {
         if (key === 'escape' || key === 'q') {
-          const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
-          const cfg = plane.config(cwd);
+          if (mode === 'select-project' && projectFilter) {
+            projectFilter = '';
+            this.actions = getSelectProjectActions();
+            this.renderProjects(app, cfg);
+            app.setStatus('search filter cleared', 'info');
+            app.render();
+            return true;
+          }
           if (plane.isConfigured(cfg)) {
             mode = 'issues';
-            this.actions = defaultActions;
+            this.actions = getIssueActions();
             this.refresh(app);
             app.render();
             return true;
@@ -517,9 +761,18 @@ function planeView() {
         }
         return false;
       }
+      if (key === 'escape') {
+        if (mode === 'issues' && issueFilter) {
+          issueFilter = '';
+          this.actions = getIssueActions();
+          this.renderIssues(app, cfg);
+          app.setStatus('search filter cleared', 'info');
+          app.render();
+          return true;
+        }
+        return false;
+      }
       if (key === 's') {
-        const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
-        const cfg = plane.config(cwd);
         if (!plane.isConfigured(cfg)) {
           if (!cfg.apiKey) {
             this.inputApiKey(app, cfg);
@@ -533,8 +786,6 @@ function planeView() {
         return true;
       }
       if (key === 'p') {
-        const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
-        const cfg = plane.config(cwd);
         this.loadProjects(app, cfg);
         return true;
       }
@@ -573,6 +824,14 @@ function planeView() {
             },
             {
               type: 'item',
+              label: 'Input Project ID / Key directly…',
+              icon: icon('edit'),
+              iconColor: sgr('edit'),
+              hint: '[press i]',
+              run: (a) => this.inputProjectId(a, cfg),
+            },
+            {
+              type: 'item',
               icon: icon('empty'),
               label: `Base: ${cfg.baseUrl} (${cfg.workspaceSlug})`,
               disabled: true,
@@ -593,9 +852,17 @@ function planeView() {
           this.loadProjects(app, cfg);
           return;
         }
-        this.actions = defaultActions;
+        this.actions = notConfiguredActions;
         this.list.setItems([
           { type: 'group', label: 'NOT CONFIGURED' },
+          {
+            type: 'item',
+            label: 'Input Project ID / Key directly…',
+            icon: icon('edit'),
+            iconColor: sgr('edit'),
+            hint: '[press i]',
+            run: (a) => this.inputProjectId(a, cfg),
+          },
           {
             type: 'item',
             icon: icon('empty'),
@@ -614,7 +881,7 @@ function planeView() {
         return;
       }
 
-      this.actions = defaultActions;
+      this.actions = getIssueActions();
       const cfgKey = `${cfg.baseUrl}|${cfg.workspaceSlug}|${cfg.projectId}|${cfg.apiKey}`;
       const isForced = Boolean(options.force || cfgKey !== lastKey);
 
@@ -642,29 +909,13 @@ function planeView() {
         .then((issues) => {
           inFlight = false;
           loaded = true;
-          const items = [{ type: 'group', label: `ISSUES (${issues.length})` }];
-          for (const issue of issues.slice(0, 100)) {
-            items.push({
-              type: 'item',
-              label: `${issue.identifier ? `${issue.identifier}-` : ''}${issue.sequence} ${issue.name}`,
-              icon: icon('issue'),
-              iconColor: sgr('issue'),
-              hint: issue.stateName,
-              danger: issue.priority === 'urgent',
-              run: (a) => {
-                openBrowser(plane.webUrl(issue, cfg));
-                a.setStatus(`opened ${issue.sequence} in browser`, 'ok');
-              },
-            });
-          }
-          if (issues.length === 0)
-            items.push({ type: 'item', icon: icon('empty'), label: '(no issues)', disabled: true });
-          this.list.setItems(items);
-          if (app && app.render) app.render();
+          cachedIssues = issues || [];
+          this.renderIssues(app, cfg);
         })
         .catch((err) => {
           inFlight = false;
           loaded = true;
+          cachedIssues = [];
           this.list.setItems([
             { type: 'group', label: 'ERROR' },
             {
@@ -672,6 +923,14 @@ function planeView() {
               icon: icon('alert'),
               label: err.message.split('\n')[0],
               disabled: true,
+            },
+            {
+              type: 'item',
+              label: 'Input Project ID / Key directly…',
+              icon: icon('edit'),
+              iconColor: sgr('edit'),
+              hint: '[press i]',
+              run: (a) => this.inputProjectId(a, cfg),
             },
             {
               type: 'item',

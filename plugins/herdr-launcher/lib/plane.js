@@ -179,6 +179,76 @@ function saveWorkspaceProjectId(targetPath, projectId) {
   return { ok: true, parentRoot, projectId };
 }
 
+function findProject(projectsList, query) {
+  if (!Array.isArray(projectsList) || !query || typeof query !== 'string') return null;
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+
+  // 1. Exact ID match
+  const exactId = projectsList.find((p) => p && typeof p.id === 'string' && p.id.toLowerCase() === q);
+  if (exactId) return exactId;
+
+  // 2. Exact identifier match (e.g. 'COD', 'HERD')
+  const exactIdent = projectsList.find(
+    (p) => p && typeof p.identifier === 'string' && p.identifier.toLowerCase() === q
+  );
+  if (exactIdent) return exactIdent;
+
+  // 3. Exact name match
+  const exactName = projectsList.find(
+    (p) => p && typeof p.name === 'string' && p.name.toLowerCase() === q
+  );
+  if (exactName) return exactName;
+
+  // 4. Substring in identifier
+  const subIdent = projectsList.find(
+    (p) => p && typeof p.identifier === 'string' && p.identifier.toLowerCase().includes(q)
+  );
+  if (subIdent) return subIdent;
+
+  // 5. Substring in name
+  const subName = projectsList.find(
+    (p) => p && typeof p.name === 'string' && p.name.toLowerCase().includes(q)
+  );
+  if (subName) return subName;
+
+  return null;
+}
+
+function filterProjects(projectsList, query) {
+  if (!Array.isArray(projectsList)) return [];
+  if (!query || typeof query !== 'string' || !query.trim()) return projectsList;
+  const q = query.trim().toLowerCase();
+  return projectsList.filter((p) => {
+    if (!p) return false;
+    const name = String(p.name || '').toLowerCase();
+    const ident = String(p.identifier || '').toLowerCase();
+    const id = String(p.id || '').toLowerCase();
+    return name.includes(q) || ident.includes(q) || id.includes(q);
+  });
+}
+
+function filterIssues(issuesList, query) {
+  if (!Array.isArray(issuesList)) return [];
+  if (!query || typeof query !== 'string' || !query.trim()) return issuesList;
+  const q = query.trim().toLowerCase();
+  return issuesList.filter((issue) => {
+    if (!issue) return false;
+    const name = String(issue.name || '').toLowerCase();
+    const seq = String(issue.sequence !== undefined ? issue.sequence : issue.sequence_id || '');
+    const ident = String(issue.identifier || '').toLowerCase();
+    const fullTag = ident ? `${ident}-${seq}`.toLowerCase() : seq;
+    const state = String(issue.stateName || '').toLowerCase();
+    return (
+      name.includes(q) ||
+      seq === q ||
+      fullTag.includes(q) ||
+      ident.includes(q) ||
+      state.includes(q)
+    );
+  });
+}
+
 function saveApiKey(apiKey) {
   if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
     return { ok: false, error: 'Plane API key cannot be empty' };
@@ -849,6 +919,9 @@ module.exports = {
   webUrl,
   resolveProjectId,
   saveWorkspaceProjectId,
+  findProject,
+  filterProjects,
+  filterIssues,
   saveApiKey,
   promptApiKey,
   readLocalPlaneConfig,
