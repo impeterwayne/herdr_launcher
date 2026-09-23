@@ -137,6 +137,73 @@ function findParentRepoRoot(dir) {
   return repoRoot;
 }
 
+function findAllWorktrees(dir) {
+  if (!dir) return [];
+  const targetDir = path.resolve(dir);
+  const parentRoot = findParentRepoRoot(targetDir) || findRepoRoot(targetDir) || targetDir;
+  const found = new Map();
+
+  const add = (p) => {
+    if (!p || typeof p !== 'string') return;
+    try {
+      const resolved = path.resolve(p);
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+        const key = resolved.toLowerCase();
+        if (!found.has(key)) {
+          found.set(key, resolved);
+        }
+      }
+    } catch (_) {}
+  };
+
+  add(parentRoot);
+  add(targetDir);
+
+  // 1. Try git worktree list --porcelain
+  try {
+    const { execFileSync } = require('node:child_process');
+    const porcelain = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+      cwd: parentRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 4000,
+      windowsHide: true,
+    });
+    for (const line of porcelain.split(/\r?\n/)) {
+      if (line.startsWith('worktree ')) {
+        const wtPath = line.slice('worktree '.length).trim();
+        add(wtPath);
+      }
+    }
+  } catch (_) {}
+
+  // 2. Try inspecting .git/worktrees filesystem metadata
+  try {
+    const gitDir = path.join(parentRoot, '.git');
+    if (fs.existsSync(gitDir) && fs.statSync(gitDir).isDirectory()) {
+      const wtDir = path.join(gitDir, 'worktrees');
+      if (fs.existsSync(wtDir) && fs.statSync(wtDir).isDirectory()) {
+        for (const entry of fs.readdirSync(wtDir)) {
+          const entryPath = path.join(wtDir, entry);
+          const gitdirFile = path.join(entryPath, 'gitdir');
+          if (fs.existsSync(gitdirFile)) {
+            let target = fs.readFileSync(gitdirFile, 'utf8').trim();
+            if (!path.isAbsolute(target)) {
+              target = path.resolve(entryPath, target);
+            }
+            if (path.basename(target).toLowerCase() === '.git') {
+              target = path.dirname(target);
+            }
+            add(target);
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  return Array.from(found.values());
+}
+
 function configDir() {
   const result = h.tryHerdr(['plugin', 'config-dir', OWNER_TOKEN]);
   const raw = result && (result._raw || result.path || result.config_dir);
@@ -169,6 +236,7 @@ module.exports = {
   resolveContext,
   findRepoRoot,
   findParentRepoRoot,
+  findAllWorktrees,
   configDir,
   readConfig,
   writeConfig,

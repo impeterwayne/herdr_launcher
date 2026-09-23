@@ -486,7 +486,8 @@ function planeView() {
           if (app.render) app.render();
         })
         .then((res) => {
-          app.setStatus(`synced ${res.taskCount} tasks (${label}) → plane/TASK_LIST.md`, 'ok');
+          const wtCount = res.worktrees && res.worktrees.length ? ` (${res.worktrees.length} worktrees)` : '';
+          app.setStatus(`synced ${res.taskCount} tasks (${label}) → plane/tasklist.md${wtCount}`, 'ok');
           this.refresh(app, { force: true });
         })
         .catch((err) => {
@@ -542,6 +543,12 @@ function planeView() {
     refresh(app, options = {}) {
       const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
       const cfg = plane.config(cwd);
+
+      if (cfg && cfg.parentRoot) {
+        try {
+          plane.ensureWorktreePlane(cwd, cfg.parentRoot);
+        } catch (_) {}
+      }
 
       if (mode === 'select-project') {
         this.loadProjects(app, cfg);

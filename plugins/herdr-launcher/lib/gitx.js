@@ -23,6 +23,32 @@ function excludePath(worktreePath) {
     }).trim();
     return path.resolve(worktreePath, rel);
   } catch (_) {
+    const dotGit = path.join(worktreePath, '.git');
+    try {
+      if (fs.existsSync(dotGit)) {
+        const stats = fs.statSync(dotGit);
+        if (stats.isDirectory()) {
+          return path.join(dotGit, 'info', 'exclude');
+        }
+        if (stats.isFile()) {
+          const content = fs.readFileSync(dotGit, 'utf8');
+          const match = content.match(/^gitdir:\s*(.+)$/m);
+          if (match) {
+            let gitDir = match[1].trim();
+            if (!path.isAbsolute(gitDir)) {
+              gitDir = path.resolve(worktreePath, gitDir);
+            }
+            const commondirFile = path.join(gitDir, 'commondir');
+            if (fs.existsSync(commondirFile)) {
+              const commonRel = fs.readFileSync(commondirFile, 'utf8').trim();
+              const commonGitDir = path.resolve(gitDir, commonRel);
+              return path.join(commonGitDir, 'info', 'exclude');
+            }
+            return path.join(gitDir, 'info', 'exclude');
+          }
+        }
+      }
+    } catch (_) {}
     return path.join(worktreePath, '.git', 'info', 'exclude');
   }
 }

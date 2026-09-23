@@ -9,6 +9,7 @@ const {
   resolveContext,
   findRepoRoot,
   findParentRepoRoot,
+  findAllWorktrees,
 } = require('./context');
 
 const CONFIG_FILE = 'plane.json';
@@ -42,16 +43,27 @@ function readLocalPlaneConfig(targetPath) {
   const parentRoot = findParentRepoRoot(targetPath);
   const worktreeRoot = findRepoRoot(targetPath);
   const candidates = [];
-  if (parentRoot) {
-    candidates.push(path.join(parentRoot, '.plane.json'));
-    candidates.push(path.join(parentRoot, '.herdr', 'plane.json'));
-    candidates.push(path.join(parentRoot, 'plane.json'));
-  }
-  if (worktreeRoot && worktreeRoot !== parentRoot) {
-    candidates.push(path.join(worktreeRoot, '.plane.json'));
-    candidates.push(path.join(worktreeRoot, '.herdr', 'plane.json'));
-    candidates.push(path.join(worktreeRoot, 'plane.json'));
-  }
+  const checkedDirs = new Set();
+
+  const addDir = (dir) => {
+    if (!dir) return;
+    const resolved = path.resolve(dir);
+    const key = resolved.toLowerCase();
+    if (checkedDirs.has(key)) return;
+    checkedDirs.add(key);
+    candidates.push(path.join(resolved, '.plane.json'));
+    candidates.push(path.join(resolved, '.herdr', 'plane.json'));
+    candidates.push(path.join(resolved, 'plane.json'));
+  };
+
+  addDir(worktreeRoot);
+  addDir(parentRoot);
+  try {
+    for (const wt of findAllWorktrees(targetPath)) {
+      addDir(wt);
+    }
+  } catch (_) {}
+
   for (const candidate of candidates) {
     try {
       if (fs.existsSync(candidate)) {
@@ -88,7 +100,14 @@ function resolveProjectId(projectPlaneIds, targetPath) {
   if (worktreeNorm && !candidatePaths.includes(worktreeNorm)) candidatePaths.push(worktreeNorm);
   if (parentNorm && !candidatePaths.includes(parentNorm)) candidatePaths.push(parentNorm);
 
-  // 1. Exact path match (target path, worktree root, or parent repo/workspace root)
+  try {
+    for (const wt of findAllWorktrees(targetPath)) {
+      const wtNorm = normalizePathKey(wt);
+      if (!candidatePaths.includes(wtNorm)) candidatePaths.push(wtNorm);
+    }
+  } catch (_) {}
+
+  // 1. Exact path match (target path, worktree root, parent repo root, or any sibling worktree)
   for (const [key, id] of Object.entries(projectPlaneIds)) {
     if (!id || typeof id !== 'string') continue;
     const cleanKey = key.trim();
@@ -99,7 +118,7 @@ function resolveProjectId(projectPlaneIds, targetPath) {
     }
   }
 
-  // 2. Ancestor directory match (key is an ancestor/parent directory of target, worktree, or parent root)
+  // 2. Ancestor directory match (key is an ancestor/parent directory of candidate paths)
   for (const [key, id] of Object.entries(projectPlaneIds)) {
     if (!id || typeof id !== 'string') continue;
     const cleanKey = key.trim();
@@ -112,7 +131,7 @@ function resolveProjectId(projectPlaneIds, targetPath) {
     }
   }
 
-  // 3. Basename match (parent workspace base, worktree base, or target base)
+  // 3. Basename match (parent workspace base, worktree base, target base, or sibling worktree bases)
   const candidateBases = [];
   if (parentNorm) candidateBases.push(getPathBasename(parentNorm));
   if (worktreeNorm && !candidateBases.includes(getPathBasename(worktreeNorm))) {
@@ -120,6 +139,13 @@ function resolveProjectId(projectPlaneIds, targetPath) {
   }
   const targetBase = getPathBasename(targetNorm);
   if (!candidateBases.includes(targetBase)) candidateBases.push(targetBase);
+
+  try {
+    for (const wt of findAllWorktrees(targetPath)) {
+      const b = getPathBasename(wt);
+      if (!candidateBases.includes(b)) candidateBases.push(b);
+    }
+  } catch (_) {}
 
   for (const [key, id] of Object.entries(projectPlaneIds)) {
     if (!id || typeof id !== 'string') continue;
@@ -142,6 +168,11 @@ function saveWorkspaceProjectId(targetPath, projectId) {
   const current = readConfig(CONFIG_FILE) || {};
   const projectPlaneIds = { ...(current.projectPlaneIds || {}) };
   projectPlaneIds[parentRoot] = projectId;
+  try {
+    for (const wt of findAllWorktrees(targetPath)) {
+      projectPlaneIds[wt] = projectId;
+    }
+  } catch (_) {}
   const updated = { ...current, projectPlaneIds };
   delete updated.projectId;
   writeConfig(CONFIG_FILE, updated);
@@ -482,7 +513,7 @@ function categorizeIssues(issues, stateMap) {
   return { backlog, todo, inProgress, done, cancelled, other };
 }
 
-function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, selectedCategories = ['all']) {
+function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, selectedCategories = ['all'], options = {}) {
   const { backlog, todo, inProgress, done, cancelled, other } = categorizeIssues(issues, stateMap);
   const totalCount = issues.length;
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -496,6 +527,7 @@ function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, select
 
   const includeAll = !selectedCategories || selectedCategories.includes('all');
   const inc = (cat) => includeAll || selectedCategories.includes(cat);
+  const evidenceBase = (options && options.evidenceBase) || './evidence';
 
   let md = `# 📋 Plane Comprehensive Task List (All States)\n\n`;
   md += `> **Workspace:** \`${cfg.workspaceSlug}\` | **Project:** \`${projectName}\` (\`${cfg.projectId}\`)  \n`;
@@ -533,11 +565,18 @@ function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, select
     if (mediaList && mediaList.length > 0) {
       itemMd += `  - **Downloaded Offline Evidence:**\n`;
       for (const m of mediaList) {
+        const mediaPath = m.localPath
+          ? m.localPath.replace(/^\.\/evidence/, evidenceBase)
+          : `${evidenceBase}/${taskTag}/${m.mediaId}.${m.type === 'video' ? 'mp4' : 'png'}`;
+        const posterPath = m.posterPath
+          ? m.posterPath.replace(/^\.\/evidence/, evidenceBase)
+          : `${evidenceBase}/${taskTag}/${m.mediaId}_poster.jpg`;
+
         if (m.type === 'image') {
-          itemMd += `    - Screenshot: [${m.mediaId}](${m.webUrl}) → ![Preview](${m.localPath})\n`;
+          itemMd += `    - Screenshot: [${m.mediaId}](${m.webUrl}) → ![Preview](${mediaPath})\n`;
         } else if (m.type === 'video') {
-          itemMd += `    - Video Recording: [${m.mediaId}](${m.webUrl}) → [Full MP4 Video](${m.localPath})\n`;
-          itemMd += `      <video controls src="${m.localPath}" poster="${m.posterPath || ''}" width="480"></video>\n`;
+          itemMd += `    - Video Recording: [${m.mediaId}](${m.webUrl}) → [Full MP4 Video](${mediaPath})\n`;
+          itemMd += `      <video controls src="${mediaPath}" poster="${posterPath}" width="480"></video>\n`;
         }
       }
     }
@@ -579,6 +618,55 @@ function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, select
   return md;
 }
 
+const LINK_TYPE = process.platform === 'win32' ? 'junction' : 'dir';
+
+function ensureWorktreePlane(worktreePath, parentRoot) {
+  if (!worktreePath) return { ok: false, error: 'worktreePath is required' };
+  const wt = path.resolve(worktreePath);
+  const parent = parentRoot ? path.resolve(parentRoot) : (findParentRepoRoot(wt) || wt);
+
+  const parentPlane = path.join(parent, 'plane');
+  const wtPlane = path.join(wt, 'plane');
+
+  // Exclude plane/ directory in .git/info/exclude
+  try {
+    const gitx = require('./gitx');
+    gitx.addExcludes(wt, ['plane/', 'plane/*']);
+  } catch (_) {}
+
+  // If in parent root, nothing more to link
+  if (wt.toLowerCase() === parent.toLowerCase()) {
+    return { ok: true, isParent: true };
+  }
+
+  // In linked worktree: link wt/plane -> parentPlane
+  let planeLinked = false;
+  if (fs.existsSync(parentPlane)) {
+    if (!fs.existsSync(wtPlane)) {
+      try {
+        fs.symlinkSync(parentPlane, wtPlane, LINK_TYPE);
+        planeLinked = true;
+      } catch (_) {
+        try {
+          fs.mkdirSync(wtPlane, { recursive: true });
+          const srcTask = path.join(parentPlane, 'tasklist.md');
+          if (fs.existsSync(srcTask)) {
+            fs.copyFileSync(srcTask, path.join(wtPlane, 'tasklist.md'));
+          }
+          const srcLegacy = path.join(parentPlane, 'TASK_LIST.md');
+          if (fs.existsSync(srcLegacy)) {
+            fs.copyFileSync(srcLegacy, path.join(wtPlane, 'TASK_LIST.md'));
+          }
+        } catch (_) {}
+      }
+    } else {
+      planeLinked = true;
+    }
+  }
+
+  return { ok: true, planeLinked };
+}
+
 async function syncProject(worktreePath, cfg = config(worktreePath), options = {}, onProgress = () => {}) {
   let opts = options;
   let progressCb = onProgress;
@@ -592,18 +680,23 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
     throw new Error(`Plane is not configured for ${worktreePath}`);
   }
 
-  const targetDir = worktreePath || process.cwd();
-  const planeDir = path.join(targetDir, 'plane');
+  const targetDir = worktreePath ? path.resolve(worktreePath) : process.cwd();
+  const parentRoot = findParentRepoRoot(targetDir) || findRepoRoot(targetDir) || targetDir;
+  const allWorktrees = findAllWorktrees(targetDir);
+
+  const planeDir = path.join(parentRoot, 'plane');
   const rawDir = path.join(planeDir, 'raw');
   const evidenceDir = path.join(planeDir, 'evidence');
 
   fs.mkdirSync(rawDir, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
 
-  // Exclude plane/ directory in .git/info/exclude
+  // Exclude plane/ directory across all worktrees
   try {
     const gitx = require('./gitx');
-    gitx.addExcludes(targetDir, ['plane/', 'plane/*']);
+    for (const wt of allWorktrees) {
+      gitx.addExcludes(wt, ['plane/', 'plane/*']);
+    }
   } catch (_) {}
 
   progressCb('Fetching tasks and states from Plane API…');
@@ -705,16 +798,43 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
     }
   }
 
-  // Generate and write TASK_LIST.md
-  progressCb('Writing plane/TASK_LIST.md…');
-  const mdContent = generateTaskListMD(cfg, issuesList, stateMap, mediaMap, projectInfo, selectedCategories);
+  // Generate tasklist markdown (only inside plane/)
+  progressCb('Writing plane/tasklist.md…');
+  const mdContent = generateTaskListMD(cfg, issuesList, stateMap, mediaMap, projectInfo, selectedCategories, {
+    evidenceBase: './evidence',
+  });
+
+  // 1. Write inside plane directory (both tasklist.md and legacy TASK_LIST.md)
+  fs.writeFileSync(path.join(planeDir, 'tasklist.md'), mdContent, 'utf8');
   fs.writeFileSync(path.join(planeDir, 'TASK_LIST.md'), mdContent, 'utf8');
+
+  // 2. Link plane directory to all worktrees
+  for (const wt of allWorktrees) {
+    if (wt.toLowerCase() !== parentRoot.toLowerCase()) {
+      const wtPlane = path.join(wt, 'plane');
+      if (!fs.existsSync(wtPlane)) {
+        try {
+          fs.symlinkSync(planeDir, wtPlane, LINK_TYPE);
+        } catch (_) {
+          try {
+            fs.mkdirSync(wtPlane, { recursive: true });
+            fs.writeFileSync(path.join(wtPlane, 'tasklist.md'), mdContent, 'utf8');
+            fs.writeFileSync(path.join(wtPlane, 'TASK_LIST.md'), mdContent, 'utf8');
+          } catch (_) {}
+        }
+      }
+    }
+  }
 
   return {
     ok: true,
     taskCount: issuesList.length,
     evidenceCount: Array.from(mediaMap.values()).reduce((sum, list) => sum + list.length, 0),
-    path: path.join(planeDir, 'TASK_LIST.md'),
+    path: path.join(planeDir, 'tasklist.md'),
+    tasklistPath: path.join(planeDir, 'tasklist.md'),
+    planePath: path.join(planeDir, 'tasklist.md'),
+    legacyPath: path.join(planeDir, 'TASK_LIST.md'),
+    worktrees: allWorktrees,
   };
 }
 
@@ -742,6 +862,8 @@ module.exports = {
   downloadFile,
   categorizeIssues,
   generateTaskListMD,
+  ensureWorktreePlane,
+  findAllWorktrees,
   syncProject,
 };
 

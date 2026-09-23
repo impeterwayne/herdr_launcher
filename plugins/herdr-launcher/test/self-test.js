@@ -377,7 +377,7 @@ function testViewComponents() {
   assert(app.promptState === null, 'promptState is cleared after submit');
 }
 
-function testPlaneConfig() {
+async function testPlaneConfig() {
   group('7. Plane Integration & Parent Workspace Resolution');
   const os = require('node:os');
   const plane = require('../lib/plane');
@@ -422,8 +422,11 @@ function testPlaneConfig() {
 
   // Test findParentRepoRoot and worktree resolution
   assert(typeof context.findParentRepoRoot === 'function', 'context.findParentRepoRoot is exported');
+  assert(typeof context.findAllWorktrees === 'function', 'context.findAllWorktrees is exported');
   const repoParent = context.findParentRepoRoot(__dirname);
   assert(Boolean(repoParent && fs.existsSync(repoParent)), 'findParentRepoRoot resolves repository root for current workspace');
+  const repoWorktrees = context.findAllWorktrees(__dirname);
+  assert(Array.isArray(repoWorktrees) && repoWorktrees.length >= 1, 'findAllWorktrees returns array containing current workspace');
 
   // Test parent workspace / herd resolution across simulated linked worktree
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-plane-test-'));
@@ -431,19 +434,30 @@ function testPlaneConfig() {
     const parentRepo = path.join(tmpDir, 'parent-workspace');
     const dotGit = path.join(parentRepo, '.git');
     const wtGitDir = path.join(dotGit, 'worktrees', 'feat-wt');
+    const wt2GitDir = path.join(dotGit, 'worktrees', 'wt2');
     const linkedWorktree = path.join(tmpDir, 'linked-worktree-feat');
+    const wt2 = path.join(tmpDir, 'linked-worktree-wt2');
     const subFolder = path.join(linkedWorktree, 'src', 'components');
 
     fs.mkdirSync(wtGitDir, { recursive: true });
+    fs.mkdirSync(wt2GitDir, { recursive: true });
     fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(wt2, { recursive: true });
     fs.writeFileSync(path.join(wtGitDir, 'commondir'), '../..\n', 'utf8');
+    fs.writeFileSync(path.join(wtGitDir, 'gitdir'), path.join(linkedWorktree, '.git') + '\n', 'utf8');
     fs.writeFileSync(path.join(linkedWorktree, '.git'), `gitdir: ${wtGitDir}\n`, 'utf8');
+    fs.writeFileSync(path.join(wt2GitDir, 'commondir'), '../..\n', 'utf8');
+    fs.writeFileSync(path.join(wt2GitDir, 'gitdir'), path.join(wt2, '.git') + '\n', 'utf8');
+    fs.writeFileSync(path.join(wt2, '.git'), `gitdir: ${wt2GitDir}\n`, 'utf8');
 
     const resolvedParent = context.findParentRepoRoot(subFolder);
     assert(
       resolvedParent && path.resolve(resolvedParent).toLowerCase() === path.resolve(parentRepo).toLowerCase(),
       'findParentRepoRoot resolves main repo root from worktree subfolder'
     );
+
+    const allDiscovered = context.findAllWorktrees(subFolder);
+    assert(allDiscovered.length >= 3, 'findAllWorktrees discovers parent and all linked worktrees');
 
     const herdMapping = {
       [parentRepo]: 'parent-plane-id-999',
@@ -454,6 +468,28 @@ function testPlaneConfig() {
 
     const resolvedFromSubfolder = plane.resolveProjectId(herdMapping, subFolder);
     assert(resolvedFromSubfolder === 'parent-plane-id-999', 'resolveProjectId resolves parent workspace project ID for worktree subfolder');
+
+    // Test resolving project ID when mapped by sibling worktree
+    const siblingMapping = {
+      [linkedWorktree]: 'sibling-proj-123',
+    };
+    const resolvedFromSibling = plane.resolveProjectId(siblingMapping, wt2);
+    assert(resolvedFromSibling === 'sibling-proj-123', 'resolveProjectId resolves project ID when mapped by sibling worktree');
+
+    // Test ensureWorktreePlane
+    assert(typeof plane.ensureWorktreePlane === 'function', 'plane.ensureWorktreePlane is exported');
+    fs.mkdirSync(path.join(parentRepo, 'plane', 'raw'), { recursive: true });
+    fs.writeFileSync(path.join(parentRepo, 'plane', 'tasklist.md'), '# Plane Task List\n', 'utf8');
+
+    const ensureRes = plane.ensureWorktreePlane(linkedWorktree, parentRepo);
+    assert(ensureRes.ok, 'ensureWorktreePlane succeeds');
+    assert(!fs.existsSync(path.join(linkedWorktree, 'tasklist.md')), 'ensureWorktreePlane does not create tasklist.md in worktree root');
+    assert(!fs.existsSync(path.join(parentRepo, 'tasklist.md')), 'ensureWorktreePlane does not create tasklist.md in parent root');
+    assert(fs.existsSync(path.join(linkedWorktree, 'plane')), 'ensureWorktreePlane creates plane link in worktree');
+    assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'tasklist.md')), 'tasklist.md accessible inside plane in worktree');
+
+    const gitx = require('../lib/gitx');
+    assert(gitx.hasExcludes(linkedWorktree, ['plane/']), 'ensureWorktreePlane excludes plane/ in worktree');
 
     // Test local .plane.json in parent repository
     fs.writeFileSync(
@@ -486,6 +522,52 @@ function testPlaneConfig() {
 
     const mdFiltered = plane.generateTaskListMD({ workspaceSlug: 'product', projectId: 'test-proj' }, sampleIssues, sampleStateMap, null, null, ['backlog']);
     assert(mdFiltered.includes('Fix Login Crash') && !mdFiltered.includes('Improve UI design'), 'generateTaskListMD with [backlog] filter only includes backlog tasks');
+
+    const sampleMediaMap = new Map([
+      [101, [{ type: 'image', mediaId: 'scr1', webUrl: 'http://prnt.sc/scr1', localPath: './evidence/TASK-101/scr1.png' }]],
+    ]);
+    const mdEvidence = plane.generateTaskListMD(
+      { workspaceSlug: 'product', projectId: 'test-proj' },
+      sampleIssues,
+      sampleStateMap,
+      sampleMediaMap,
+      null,
+      ['all']
+    );
+    assert(mdEvidence.includes('./evidence/'), 'generateTaskListMD formats evidence with ./evidence by default');
+
+    // Test syncProject across all worktrees with mocked fetch
+    const origFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (url) => {
+        if (url.includes('/states/')) {
+          return { ok: true, json: async () => [{ id: 's1', name: 'Backlog', group: 'backlog' }] };
+        }
+        if (url.includes('/issues/')) {
+          return { ok: true, json: async () => [{ id: 'i1', sequence_id: 101, name: 'Sample Task', state: 's1', priority: 'high' }] };
+        }
+        if (url.includes('/projects/')) {
+          return { ok: true, json: async () => ({ id: 'test-proj', name: 'Test Project', identifier: 'TEST' }) };
+        }
+        return { ok: false, status: 404 };
+      };
+
+      const syncRes = await plane.syncProject(subFolder, {
+        baseUrl: 'https://plane.test',
+        workspaceSlug: 'test',
+        projectId: 'test-proj',
+        apiKey: 'key',
+      });
+      assert(syncRes.ok, 'syncProject succeeds across all worktrees');
+      assert(!fs.existsSync(path.join(parentRepo, 'tasklist.md')), 'syncProject does not create tasklist.md in parent repo root');
+      assert(!fs.existsSync(path.join(linkedWorktree, 'tasklist.md')), 'syncProject does not create tasklist.md in linked worktree root');
+      assert(!fs.existsSync(path.join(wt2, 'tasklist.md')), 'syncProject does not create tasklist.md in wt2 worktree root');
+      assert(fs.existsSync(path.join(parentRepo, 'plane', 'tasklist.md')), 'syncProject creates tasklist.md in plane dir');
+      assert(fs.existsSync(path.join(parentRepo, 'plane', 'TASK_LIST.md')), 'syncProject creates legacy TASK_LIST.md in plane dir');
+      assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'tasklist.md')), 'syncProject makes plane/tasklist.md accessible in linked worktree');
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   } finally {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -796,7 +878,7 @@ function testLauncherLiveness() {
   );
 }
 
-function main() {
+async function main() {
   process.stdout.write('\x1b[1m\x1b[35m=== Herdr-Launcher Self-Test Suite ===\x1b[0m\n');
   const start = Date.now();
 
@@ -807,7 +889,7 @@ function main() {
     testAgentLaunchersDryRun();
     testAppLaunchersDryRun();
     testViewComponents();
-    testPlaneConfig();
+    await testPlaneConfig();
     testMouseInput();
     testTabWatcherAndAutoDock();
     testDeadProcessRecoveryAndOrphanAdoption();

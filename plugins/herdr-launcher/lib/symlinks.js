@@ -107,7 +107,7 @@ function remove(worktreePath, name) {
   }
 }
 
-const SHAREABLE = ['node_modules', 'build', 'dist', '.gradle', 'vendor', 'target', '.venv'];
+const SHAREABLE = ['node_modules', 'build', 'dist', '.gradle', 'vendor', 'target', '.venv', 'plane'];
 
 function siblingWorktrees(worktreePath) {
   let porcelain;
