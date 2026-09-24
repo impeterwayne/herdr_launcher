@@ -583,15 +583,54 @@ async function testPlaneConfig() {
     const searchState = plane.filterIssues(sampleIssueList, 'progress');
     assert(searchState.length === 1 && searchState[0].sequence === 102, 'filterIssues filters by state name');
 
-    // Test syncProject across all worktrees with mocked fetch
+    // Test extractMediaReferences
+    assert(typeof plane.extractMediaReferences === 'function', 'plane.extractMediaReferences is exported');
+    const sampleHtml = `
+      <p>Issue description</p>
+      <image-component data-id="123" src="38b23ab0-b604-487d-b27d-13deff66fc1d" width="300px"></image-component>
+      <img src="https://example.com/screenshot.png" alt="preview" />
+      <a href="https://prnt.sc/lightshot1">Screenshot</a>
+      <a href="https://streamable.com/video1">Video</a>
+    `;
+    const refs = plane.extractMediaReferences(sampleHtml);
+    assert(refs.some((r) => r.kind === 'plane-image' && r.src === '38b23ab0-b604-487d-b27d-13deff66fc1d'), 'extractMediaReferences detects plane image-component');
+    assert(refs.some((r) => r.kind === 'image' && r.src === 'https://example.com/screenshot.png'), 'extractMediaReferences detects standard img tags');
+    assert(refs.some((r) => r.kind === 'prnt.sc' && r.mediaId === 'lightshot1'), 'extractMediaReferences detects prnt.sc links');
+    assert(refs.some((r) => r.kind === 'streamable' && r.mediaId === 'video1'), 'extractMediaReferences detects streamable links');
+
+    // Test syncProject across all worktrees with mocked fetch and evidence downloading
     const origFetch = globalThis.fetch;
     try {
       globalThis.fetch = async (url) => {
         if (url.includes('/states/')) {
           return { ok: true, json: async () => [{ id: 's1', name: 'Backlog', group: 'backlog' }] };
         }
-        if (url.includes('/issues/')) {
-          return { ok: true, json: async () => [{ id: 'i1', sequence_id: 101, name: 'Sample Task', state: 's1', priority: 'high' }] };
+        if (url.includes('/issues/') && !url.includes('/issue-attachments/')) {
+          return {
+            ok: true,
+            json: async () => [
+              {
+                id: 'i1',
+                sequence_id: 101,
+                name: 'Sample Task',
+                state: 's1',
+                priority: 'high',
+                description_html: '<p>Actual:</p><image-component src="asset-img-123"></image-component>',
+              },
+            ],
+          };
+        }
+        if (url.includes('/issue-attachments/asset-img-123/')) {
+          // Return mock image data
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'image/png' }),
+            arrayBuffer: async () => Buffer.from('PNGDATA'),
+          };
+        }
+        if (url.includes('/issue-attachments/')) {
+          return { ok: true, json: async () => [] };
         }
         if (url.includes('/projects/')) {
           return { ok: true, json: async () => ({ id: 'test-proj', name: 'Test Project', identifier: 'TEST' }) };
@@ -606,12 +645,16 @@ async function testPlaneConfig() {
         apiKey: 'key',
       });
       assert(syncRes.ok, 'syncProject succeeds across all worktrees');
+      assert(syncRes.evidenceCount === 1, 'syncProject downloaded 1 embedded image asset');
       assert(!fs.existsSync(path.join(parentRepo, 'tasklist.md')), 'syncProject does not create tasklist.md in parent repo root');
       assert(!fs.existsSync(path.join(linkedWorktree, 'tasklist.md')), 'syncProject does not create tasklist.md in linked worktree root');
       assert(!fs.existsSync(path.join(wt2, 'tasklist.md')), 'syncProject does not create tasklist.md in wt2 worktree root');
       assert(fs.existsSync(path.join(parentRepo, 'plane', 'tasklist.md')), 'syncProject creates tasklist.md in plane dir');
       assert(fs.existsSync(path.join(parentRepo, 'plane', 'TASK_LIST.md')), 'syncProject creates legacy TASK_LIST.md in plane dir');
       assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'tasklist.md')), 'syncProject makes plane/tasklist.md accessible in linked worktree');
+      assert(fs.existsSync(path.join(parentRepo, 'plane', 'evidence', 'TEST-101', 'asset-img-123.png')), 'syncProject saved evidence image to disk');
+      const savedMd = fs.readFileSync(path.join(parentRepo, 'plane', 'tasklist.md'), 'utf8');
+      assert(savedMd.includes('asset-img-123'), 'tasklist.md references downloaded asset');
     } finally {
       globalThis.fetch = origFetch;
     }

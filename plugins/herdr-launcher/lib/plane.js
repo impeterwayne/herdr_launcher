@@ -528,13 +528,14 @@ async function scrapeStreamableMediaURLs(mediaId, streamableUrl) {
   return { videoUrl: null, posterUrl: null };
 }
 
-async function downloadFile(url, targetPath) {
+async function downloadFile(url, targetPath, options = {}) {
   try {
     if (fs.existsSync(targetPath) && fs.statSync(targetPath).size > 0) {
       return { success: true, cached: true };
     }
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT_HEADER } });
+    const headers = { 'User-Agent': USER_AGENT_HEADER, ...(options.headers || {}) };
+    const res = await fetch(url, { headers });
     if (!res.ok) return { success: false, error: res.statusText };
     const arrayBuffer = await res.arrayBuffer();
     fs.writeFileSync(targetPath, Buffer.from(arrayBuffer));
@@ -543,6 +544,64 @@ async function downloadFile(url, targetPath) {
     return { success: false, error: err.message };
   }
 }
+
+function extractMediaReferences(html) {
+  if (!html || typeof html !== 'string') return [];
+  const refs = [];
+  const seen = new Set();
+
+  // 1. Plane native embedded images (<image-component ... src="<assetId>" ...>)
+  const imgCompRegex = /<image-component\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+  let m;
+  while ((m = imgCompRegex.exec(html)) !== null) {
+    const src = m[1].trim();
+    if (!src || seen.has(src)) continue;
+    seen.add(src);
+    refs.push({
+      kind: 'plane-image',
+      src,
+      isHttp: src.startsWith('http://') || src.startsWith('https://'),
+    });
+  }
+
+  // 2. Standard HTML images (<img ... src="...">)
+  const imgRegex = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+  while ((m = imgRegex.exec(html)) !== null) {
+    const src = m[1].trim();
+    if (!src || src.startsWith('data:') || src.includes('prnt.sc') || seen.has(src)) continue;
+    seen.add(src);
+    refs.push({
+      kind: 'image',
+      src,
+      isHttp: src.startsWith('http://') || src.startsWith('https://'),
+    });
+  }
+
+  // 3. Screenshots from prnt.sc
+  const prntMatches = html.match(/https?:\/\/prnt\.sc\/([a-zA-Z0-9_-]+)/g);
+  if (prntMatches) {
+    for (const webUrl of prntMatches) {
+      const mediaId = webUrl.split('/').pop();
+      if (!mediaId || seen.has(mediaId)) continue;
+      seen.add(mediaId);
+      refs.push({ kind: 'prnt.sc', webUrl, mediaId });
+    }
+  }
+
+  // 4. Videos from streamable
+  const streamableMatches = html.match(/https?:\/\/streamable\.com\/([a-zA-Z0-9_-]+)/g);
+  if (streamableMatches) {
+    for (const webUrl of streamableMatches) {
+      const mediaId = webUrl.split('/').pop();
+      if (!mediaId || seen.has(mediaId)) continue;
+      seen.add(mediaId);
+      refs.push({ kind: 'streamable', webUrl, mediaId });
+    }
+  }
+
+  return refs;
+}
+
 
 function categorizeIssues(issues, stateMap) {
   const backlog = [];
@@ -811,11 +870,55 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
     const taskID = projPrefix ? `${projPrefix}-${seq}` : `TASK-${seq}`;
     const taskMediaList = [];
 
-    // Screenshots from prnt.sc
-    const prntMatches = desc.match(/https?:\/\/prnt\.sc\/([a-zA-Z0-9_-]+)/g);
-    if (prntMatches) {
-      for (const webUrl of prntMatches) {
-        const mediaId = webUrl.split('/').pop();
+    // Scan and download media
+    const mediaRefs = extractMediaReferences(desc);
+    for (const ref of mediaRefs) {
+      if (ref.kind === 'plane-image') {
+        const isHttp = ref.isHttp;
+        const assetId = isHttp ? path.basename(ref.src).split('?')[0] : ref.src;
+        if (!assetId || taskMediaList.some((m) => m.mediaId === assetId)) continue;
+        const targetFilePath = path.join(evidenceDir, taskID, `${assetId}.png`);
+        const relLocalPath = `./evidence/${taskID}/${assetId}.png`;
+        const dlUrl = isHttp
+          ? ref.src
+          : `${cfg.baseUrl.replace(/\/+$/, '')}/api/v1/workspaces/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}/issue-attachments/${assetId}/`;
+        const dlOpts = isHttp ? {} : { headers: { 'X-API-Key': cfg.apiKey } };
+        const dlRes = await downloadFile(dlUrl, targetFilePath, dlOpts);
+        if (dlRes.success) {
+          taskMediaList.push({
+            type: 'image',
+            webUrl: isHttp
+              ? ref.src
+              : `${cfg.baseUrl.replace(/\/+$/, '')}/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}`,
+            mediaId: assetId,
+            localPath: relLocalPath,
+          });
+        }
+      } else if (ref.kind === 'image') {
+        const isHttp = ref.isHttp;
+        const filename = path.basename(ref.src).split('?')[0] || `img_${Date.now()}`;
+        const ext = path.extname(filename) || '.png';
+        const cleanId = path.basename(filename, ext);
+        if (!cleanId || taskMediaList.some((m) => m.mediaId === cleanId || m.mediaId === filename)) continue;
+        const targetFilePath = path.join(evidenceDir, taskID, `${cleanId}${ext}`);
+        const relLocalPath = `./evidence/${taskID}/${cleanId}${ext}`;
+        const dlUrl = isHttp
+          ? ref.src
+          : `${cfg.baseUrl.replace(/\/+$/, '')}/api/v1/workspaces/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}/issue-attachments/${ref.src}/`;
+        const dlOpts = isHttp ? {} : { headers: { 'X-API-Key': cfg.apiKey } };
+        const dlRes = await downloadFile(dlUrl, targetFilePath, dlOpts);
+        if (dlRes.success) {
+          taskMediaList.push({
+            type: 'image',
+            webUrl: isHttp
+              ? ref.src
+              : `${cfg.baseUrl.replace(/\/+$/, '')}/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}`,
+            mediaId: cleanId,
+            localPath: relLocalPath,
+          });
+        }
+      } else if (ref.kind === 'prnt.sc') {
+        const { webUrl, mediaId } = ref;
         if (!mediaId || taskMediaList.some((m) => m.mediaId === mediaId)) continue;
         const targetFilePath = path.join(evidenceDir, taskID, `${mediaId}.png`);
         const relLocalPath = `./evidence/${taskID}/${mediaId}.png`;
@@ -831,14 +934,8 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
             });
           }
         }
-      }
-    }
-
-    // Videos from streamable
-    const streamableMatches = desc.match(/https?:\/\/streamable\.com\/([a-zA-Z0-9_-]+)/g);
-    if (streamableMatches) {
-      for (const webUrl of streamableMatches) {
-        const mediaId = webUrl.split('/').pop();
+      } else if (ref.kind === 'streamable') {
+        const { webUrl, mediaId } = ref;
         if (!mediaId || taskMediaList.some((m) => m.mediaId === mediaId)) continue;
         const targetVideoPath = path.join(evidenceDir, taskID, `${mediaId}.mp4`);
         const targetPosterPath = path.join(evidenceDir, taskID, `${mediaId}_poster.jpg`);
@@ -861,6 +958,40 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
           }
         }
       }
+    }
+
+    // Also check task.id issue attachments via API
+    if (task.id) {
+      try {
+        const attachUrl = `${cfg.baseUrl.replace(/\/+$/, '')}/api/v1/workspaces/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}/issue-attachments/`;
+        const attachRes = await fetch(attachUrl, {
+          headers: { 'X-API-Key': cfg.apiKey, 'User-Agent': USER_AGENT_HEADER },
+        });
+        if (attachRes.ok) {
+          const attachments = await attachRes.json();
+          if (Array.isArray(attachments)) {
+            for (const att of attachments) {
+              const attId = att.id;
+              if (!attId || taskMediaList.some((m) => m.mediaId === attId)) continue;
+              const name = (att.attributes && att.attributes.name) || (att.asset && path.basename(att.asset)) || `${attId}.png`;
+              const ext = path.extname(name) || '.png';
+              const isVideo = ['.mp4', '.mov', '.webm'].includes(ext.toLowerCase());
+              const targetPath = path.join(evidenceDir, taskID, `${attId}${ext}`);
+              const relPath = `./evidence/${taskID}/${attId}${ext}`;
+              const dlUrl = `${cfg.baseUrl.replace(/\/+$/, '')}/api/v1/workspaces/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}/issue-attachments/${attId}/`;
+              const dlRes = await downloadFile(dlUrl, targetPath, { headers: { 'X-API-Key': cfg.apiKey } });
+              if (dlRes.success) {
+                taskMediaList.push({
+                  type: isVideo ? 'video' : 'image',
+                  webUrl: `${cfg.baseUrl.replace(/\/+$/, '')}/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}`,
+                  mediaId: attId,
+                  localPath: relPath,
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
     }
 
     if (taskMediaList.length > 0) {
@@ -938,6 +1069,7 @@ module.exports = {
   ensureWorktreePlane,
   findAllWorktrees,
   syncProject,
+  extractMediaReferences,
 };
 
 if (require.main === module) {
