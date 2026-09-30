@@ -491,17 +491,28 @@ async function testPlaneConfig() {
     // Test ensureWorktreePlane
     assert(typeof plane.ensureWorktreePlane === 'function', 'plane.ensureWorktreePlane is exported');
     fs.mkdirSync(path.join(parentRepo, 'plane', 'raw'), { recursive: true });
-    fs.writeFileSync(path.join(parentRepo, 'plane', 'tasklist.md'), '# Plane Task List\n', 'utf8');
+    fs.writeFileSync(path.join(parentRepo, 'plane', 'TASK_LIST.md'), '# Plane Task List\n', 'utf8');
 
     const ensureRes = plane.ensureWorktreePlane(linkedWorktree, parentRepo);
     assert(ensureRes.ok, 'ensureWorktreePlane succeeds');
-    assert(!fs.existsSync(path.join(linkedWorktree, 'tasklist.md')), 'ensureWorktreePlane does not create tasklist.md in worktree root');
-    assert(!fs.existsSync(path.join(parentRepo, 'tasklist.md')), 'ensureWorktreePlane does not create tasklist.md in parent root');
+    assert(!fs.existsSync(path.join(linkedWorktree, 'TASK_LIST.md')), 'ensureWorktreePlane does not create TASK_LIST.md in worktree root');
+    assert(!fs.existsSync(path.join(parentRepo, 'TASK_LIST.md')), 'ensureWorktreePlane does not create TASK_LIST.md in parent root');
+    assert(!fs.existsSync(path.join(parentRepo, 'plane', 'tasklist.md')), 'ensureWorktreePlane does not create tasklist.md');
+    assert(!fs.existsSync(path.join(linkedWorktree, 'plane', 'tasklist.md')), 'ensureWorktreePlane does not create tasklist.md in worktree');
     assert(fs.existsSync(path.join(linkedWorktree, 'plane')), 'ensureWorktreePlane creates plane link in worktree');
-    assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'tasklist.md')), 'tasklist.md accessible inside plane in worktree');
+    assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'TASK_LIST.md')), 'TASK_LIST.md accessible inside plane in worktree');
 
     const gitx = require('../lib/gitx');
-    assert(gitx.hasExcludes(linkedWorktree, ['plane/']), 'ensureWorktreePlane excludes plane/ in worktree');
+    assert(!gitx.hasExcludes(linkedWorktree, ['plane/']), 'ensureWorktreePlane does not exclude plane/ in worktree');
+    assert(!gitx.hasExcludes(linkedWorktree, ['TASK_LIST.md']), 'ensureWorktreePlane does not exclude TASK_LIST.md in worktree');
+    assert(!gitx.hasExcludes(parentRepo, ['plane/']), 'ensureWorktreePlane does not exclude plane/ in parent');
+    assert(!gitx.hasExcludes(parentRepo, ['TASK_LIST.md']), 'ensureWorktreePlane does not exclude TASK_LIST.md in parent');
+
+    // Test that ensureWorktreePlane cleans up any existing stale plane excludes
+    gitx.addExcludes(linkedWorktree, ['plane/', 'TASK_LIST.md']);
+    plane.ensureWorktreePlane(linkedWorktree, parentRepo);
+    assert(!gitx.hasExcludes(linkedWorktree, ['plane/']), 'ensureWorktreePlane cleans up stale plane/ exclude');
+    assert(!gitx.hasExcludes(linkedWorktree, ['TASK_LIST.md']), 'ensureWorktreePlane cleans up stale TASK_LIST.md exclude');
 
     // Test local .plane.json in parent repository
     fs.writeFileSync(
@@ -646,15 +657,18 @@ async function testPlaneConfig() {
       });
       assert(syncRes.ok, 'syncProject succeeds across all worktrees');
       assert(syncRes.evidenceCount === 1, 'syncProject downloaded 1 embedded image asset');
-      assert(!fs.existsSync(path.join(parentRepo, 'tasklist.md')), 'syncProject does not create tasklist.md in parent repo root');
-      assert(!fs.existsSync(path.join(linkedWorktree, 'tasklist.md')), 'syncProject does not create tasklist.md in linked worktree root');
-      assert(!fs.existsSync(path.join(wt2, 'tasklist.md')), 'syncProject does not create tasklist.md in wt2 worktree root');
-      assert(fs.existsSync(path.join(parentRepo, 'plane', 'tasklist.md')), 'syncProject creates tasklist.md in plane dir');
-      assert(fs.existsSync(path.join(parentRepo, 'plane', 'TASK_LIST.md')), 'syncProject creates legacy TASK_LIST.md in plane dir');
-      assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'tasklist.md')), 'syncProject makes plane/tasklist.md accessible in linked worktree');
+      assert(!fs.existsSync(path.join(parentRepo, 'TASK_LIST.md')), 'syncProject does not create TASK_LIST.md in parent repo root');
+      assert(!fs.existsSync(path.join(linkedWorktree, 'TASK_LIST.md')), 'syncProject does not create TASK_LIST.md in linked worktree root');
+      assert(!fs.existsSync(path.join(wt2, 'TASK_LIST.md')), 'syncProject does not create TASK_LIST.md in wt2 worktree root');
+      assert(!fs.existsSync(path.join(parentRepo, 'plane', 'tasklist.md')), 'syncProject does not create tasklist.md in plane dir');
+      assert(!fs.existsSync(path.join(linkedWorktree, 'plane', 'tasklist.md')), 'syncProject does not create tasklist.md in linked worktree plane dir');
+      assert(fs.existsSync(path.join(parentRepo, 'plane', 'TASK_LIST.md')), 'syncProject creates TASK_LIST.md in plane dir');
+      assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'TASK_LIST.md')), 'syncProject makes plane/TASK_LIST.md accessible in linked worktree');
       assert(fs.existsSync(path.join(parentRepo, 'plane', 'evidence', 'TEST-101', 'asset-img-123.png')), 'syncProject saved evidence image to disk');
-      const savedMd = fs.readFileSync(path.join(parentRepo, 'plane', 'tasklist.md'), 'utf8');
-      assert(savedMd.includes('asset-img-123'), 'tasklist.md references downloaded asset');
+      const savedMd = fs.readFileSync(path.join(parentRepo, 'plane', 'TASK_LIST.md'), 'utf8');
+      assert(savedMd.includes('asset-img-123'), 'TASK_LIST.md references downloaded asset');
+      assert(!gitx.hasExcludes(subFolder, ['plane/']), 'syncProject does not exclude plane/');
+      assert(!gitx.hasExcludes(subFolder, ['TASK_LIST.md']), 'syncProject does not exclude TASK_LIST.md');
     } finally {
       globalThis.fetch = origFetch;
     }

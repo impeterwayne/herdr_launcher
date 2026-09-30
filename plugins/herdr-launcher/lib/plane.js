@@ -757,10 +757,13 @@ function ensureWorktreePlane(worktreePath, parentRoot) {
   const parentPlane = path.join(parent, 'plane');
   const wtPlane = path.join(wt, 'plane');
 
-  // Exclude plane/ directory in .git/info/exclude
+  // Do not exclude anything in plane; remove any previous plane-related excludes
   try {
     const gitx = require('./gitx');
-    gitx.addExcludes(wt, ['plane/', 'plane/*']);
+    gitx.removeExcludes(wt, ['plane/', 'plane/*', 'plane', 'TASK_LIST.md', 'tasklist.md']);
+    if (parent && parent.toLowerCase() !== wt.toLowerCase()) {
+      gitx.removeExcludes(parent, ['plane/', 'plane/*', 'plane', 'TASK_LIST.md', 'tasklist.md']);
+    }
   } catch (_) {}
 
   // If in parent root, nothing more to link
@@ -778,9 +781,9 @@ function ensureWorktreePlane(worktreePath, parentRoot) {
       } catch (_) {
         try {
           fs.mkdirSync(wtPlane, { recursive: true });
-          const srcTask = path.join(parentPlane, 'tasklist.md');
-          if (fs.existsSync(srcTask)) {
-            fs.copyFileSync(srcTask, path.join(wtPlane, 'tasklist.md'));
+          const obsolete = path.join(wtPlane, 'tasklist.md');
+          if (fs.existsSync(obsolete)) {
+            try { fs.unlinkSync(obsolete); } catch (_) {}
           }
           const srcLegacy = path.join(parentPlane, 'TASK_LIST.md');
           if (fs.existsSync(srcLegacy)) {
@@ -820,11 +823,11 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
   fs.mkdirSync(rawDir, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
 
-  // Exclude plane/ directory across all worktrees
+  // Do not exclude anything in plane; remove any previous plane-related excludes
   try {
     const gitx = require('./gitx');
     for (const wt of allWorktrees) {
-      gitx.addExcludes(wt, ['plane/', 'plane/*']);
+      gitx.removeExcludes(wt, ['plane/', 'plane/*', 'plane', 'TASK_LIST.md', 'tasklist.md']);
     }
   } catch (_) {}
 
@@ -999,15 +1002,20 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
     }
   }
 
-  // Generate tasklist markdown (only inside plane/)
-  progressCb('Writing plane/tasklist.md…');
+  // Generate TASK_LIST markdown (only inside plane/)
+  progressCb('Writing plane/TASK_LIST.md…');
   const mdContent = generateTaskListMD(cfg, issuesList, stateMap, mediaMap, projectInfo, selectedCategories, {
     evidenceBase: './evidence',
   });
 
-  // 1. Write inside plane directory (both tasklist.md and legacy TASK_LIST.md)
-  fs.writeFileSync(path.join(planeDir, 'tasklist.md'), mdContent, 'utf8');
+  // Write inside plane directory (only TASK_LIST.md, no need for tasklist.md)
   fs.writeFileSync(path.join(planeDir, 'TASK_LIST.md'), mdContent, 'utf8');
+  try {
+    const obsoleteTasklist = path.join(planeDir, 'tasklist.md');
+    if (fs.existsSync(obsoleteTasklist)) {
+      fs.unlinkSync(obsoleteTasklist);
+    }
+  } catch (_) {}
 
   // 2. Link plane directory to all worktrees
   for (const wt of allWorktrees) {
@@ -1019,7 +1027,10 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
         } catch (_) {
           try {
             fs.mkdirSync(wtPlane, { recursive: true });
-            fs.writeFileSync(path.join(wtPlane, 'tasklist.md'), mdContent, 'utf8');
+            const obsolete = path.join(wtPlane, 'tasklist.md');
+            if (fs.existsSync(obsolete)) {
+              try { fs.unlinkSync(obsolete); } catch (_) {}
+            }
             fs.writeFileSync(path.join(wtPlane, 'TASK_LIST.md'), mdContent, 'utf8');
           } catch (_) {}
         }
@@ -1031,9 +1042,9 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
     ok: true,
     taskCount: issuesList.length,
     evidenceCount: Array.from(mediaMap.values()).reduce((sum, list) => sum + list.length, 0),
-    path: path.join(planeDir, 'tasklist.md'),
-    tasklistPath: path.join(planeDir, 'tasklist.md'),
-    planePath: path.join(planeDir, 'tasklist.md'),
+    path: path.join(planeDir, 'TASK_LIST.md'),
+    tasklistPath: path.join(planeDir, 'TASK_LIST.md'),
+    planePath: path.join(planeDir, 'TASK_LIST.md'),
     legacyPath: path.join(planeDir, 'TASK_LIST.md'),
     worktrees: allWorktrees,
   };

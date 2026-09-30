@@ -191,13 +191,13 @@ Khởi tạo và quản lý các thành phần [OpenSpec](https://github.com/Fis
 - Các phím thao tác: `[⏎ deploy]` `[u update]` `[r reload]` `[esc close]`.
 
 ### Plane Tasks & Đồng bộ Bằng chứng (`prefix+alt+p`)
-Xem các issue trên Plane, đồng bộ có chọn lọc các tác vụ và tải dữ liệu bằng chứng (hình ảnh, video đính kèm) thành tài liệu Markdown ngoại tuyến bên trong thư mục `plane/` (`plane/tasklist.md` / `plane/TASK_LIST.md`).
-- **Đồng bộ toàn bộ Worktree**: Tự động chia sẻ và liên kết thư mục `plane/` (bao gồm `plane/tasklist.md` và bằng chứng ngoại tuyến) đến tất cả các git worktree liên quan.
+Xem các issue trên Plane, đồng bộ có chọn lọc các tác vụ và tải dữ liệu bằng chứng (hình ảnh, video đính kèm) thành tài liệu Markdown ngoại tuyến bên trong thư mục `plane/` (`plane/TASK_LIST.md`).
+- **Đồng bộ toàn bộ Worktree**: Tự động chia sẻ và liên kết thư mục `plane/` (bao gồm `plane/TASK_LIST.md` và bằng chứng ngoại tuyến) đến tất cả các git worktree liên quan.
 - **Tìm kiếm & Lọc nhanh (`/`)**: Tìm kiếm tức thì (live-filter) dự án theo tên hoặc mã định danh, tìm kiếm tác vụ theo tiêu đề, số thứ tự (ví dụ: `101`), mã tag (`COD-101`) hoặc trạng thái. Nhấn `c` hoặc `esc` để xóa bộ lọc.
 - **Nhập trực tiếp Project ID (`i`)**: Nhập hoặc dán trực tiếp UUID / mã định danh dự án mà không cần phải cuộn qua danh sách dài.
 - **Cài đặt API Key tương tác (`k`)**: Nhập và lưu trữ an toàn API Key vào tệp `plane.json`.
 - **Bộ chuyển đổi dự án tương tác (`p`)**: Duyệt, tìm kiếm và liên kết các dự án Plane tương ứng với không gian làm việc của bạn (tự động chia sẻ cho tất cả worktree).
-- **Thu thập có chọn lọc (`s`)**: Lựa chọn phạm vi công việc cần đồng bộ (`Backlog + Todo`, `Active Tasks`, `All Tasks`, v.v.). Tự động tải ảnh chụp màn hình và video về `plane/evidence/<taskId>/`, tạo `plane/tasklist.md` và cập nhật `.git/info/exclude` trên toàn bộ worktree.
+- **Thu thập có chọn lọc (`s`)**: Lựa chọn phạm vi công việc cần đồng bộ (`Backlog + Todo`, `Active Tasks`, `All Tasks`, v.v.). Tự động tải ảnh chụp màn hình và video về `plane/evidence/<taskId>/`, và tạo `plane/TASK_LIST.md` với liên kết xem ngoại tuyến.
 
 ---
 

@@ -692,7 +692,7 @@ function planeView() {
         })
         .then((res) => {
           const wtCount = res.worktrees && res.worktrees.length ? ` (${res.worktrees.length} worktrees)` : '';
-          app.setStatus(`synced ${res.taskCount} tasks (${label}) → plane/tasklist.md${wtCount}`, 'ok');
+          app.setStatus(`synced ${res.taskCount} tasks (${label}) → plane/TASK_LIST.md${wtCount}`, 'ok');
           this.refresh(app, { force: true });
         })
         .catch((err) => {
