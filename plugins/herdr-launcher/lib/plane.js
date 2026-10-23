@@ -1061,10 +1061,11 @@ function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, select
     const itemPrefix = projectIdentifier || item.project_detail?.identifier || item.project_identifier || '';
     const taskTag = itemPrefix ? `${itemPrefix}-${seq}` : `#${seq}`;
     const taskFolderTag = itemPrefix ? `${itemPrefix}-${seq}` : `TASK-${seq}`;
+    const taskMdFile = `${taskFolderTag}.md`;
     const tMd = item.taskMdPath
       ? item.taskMdPath.replace(/^\.\/evidence/, evidenceBase)
-      : `${evidenceBase}/${taskFolderTag}/TASK.md`;
-    if (true) return `- [${checkbox}] **${taskTag}**: ${item.name} → [TASK.md](${tMd})\n`;
+      : `${evidenceBase}/${taskFolderTag}/${taskMdFile}`;
+    if (true) return `- [${checkbox}] **${taskTag}**: ${item.name} → [${taskMdFile}](${tMd})\n`;
     let itemMd = `- [${checkbox}] **${taskTag}**: ${item.name}\n`;
     itemMd += `  - **Priority:** ${formatPriority(item.priority)} | **Start Date:** \`${formatDate(item.start_date)}\``;
     if (item.updated_at || item.updatedAt) {
@@ -1455,8 +1456,14 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
       const taskFolder = path.join(evidenceDir, taskID);
       fs.mkdirSync(taskFolder, { recursive: true });
       const taskMdContent = generateTaskMD(cfg, task, taskID, taskComments, taskMediaList);
-      fs.writeFileSync(path.join(taskFolder, 'TASK.md'), taskMdContent, 'utf8');
-      task.taskMdPath = `./evidence/${taskID}/TASK.md`;
+      const obsoleteTaskMd = path.join(taskFolder, 'TASK.md');
+      if (fs.existsSync(obsoleteTaskMd)) {
+        try {
+          fs.unlinkSync(obsoleteTaskMd);
+        } catch (_) {}
+      }
+      fs.writeFileSync(path.join(taskFolder, `${taskID}.md`), taskMdContent, 'utf8');
+      task.taskMdPath = `./evidence/${taskID}/${taskID}.md`;
     } catch (_) {}
 
     if (taskMediaList.length > 0) {

@@ -639,7 +639,7 @@ async function testPlaneConfig() {
       null,
       ['all']
     );
-    assert(mdVideo.includes('[TASK.md](./evidence/TASK-101/TASK.md)'), 'generateTaskListMD links concisely to per-task TASK.md');
+    assert(mdVideo.includes('[TASK-101.md](./evidence/TASK-101/TASK-101.md)'), 'generateTaskListMD links concisely to per-task <taskID>.md');
 
     const perTaskMd = plane.generateTaskMD(
       { baseUrl: 'https://plane.test', workspaceSlug: 'product', projectId: 'test-proj' },
@@ -759,8 +759,8 @@ async function testPlaneConfig() {
       assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'TASK_LIST.md')), 'syncProject makes plane/TASK_LIST.md accessible in linked worktree');
       assert(fs.existsSync(path.join(parentRepo, 'plane', 'evidence', 'TEST-101', 'asset-img-123.png')), 'syncProject saved evidence image to disk');
       const savedMd = fs.readFileSync(path.join(parentRepo, 'plane', 'TASK_LIST.md'), 'utf8');
-      assert(savedMd.includes('[TASK.md](./evidence/TEST-101/TASK.md)'), 'TASK_LIST.md links to per-task TASK.md');
-      const taskMdPath = path.join(parentRepo, 'plane', 'evidence', 'TEST-101', 'TASK.md');
+      assert(savedMd.includes('[TEST-101.md](./evidence/TEST-101/TEST-101.md)'), 'TASK_LIST.md links to per-task <taskID>.md');
+      const taskMdPath = path.join(parentRepo, 'plane', 'evidence', 'TEST-101', 'TEST-101.md');
       assert(fs.existsSync(taskMdPath), 'syncProject writes TASK.md inside task evidence folder');
       const taskMdContent = fs.readFileSync(taskMdPath, 'utf8');
       assert(taskMdContent.includes('asset-img-123'), 'TASK.md references downloaded asset');
