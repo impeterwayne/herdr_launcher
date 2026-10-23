@@ -36,21 +36,21 @@ const paneLayout = (paneId) => herdr(['pane', 'layout', '--pane', paneId]).layou
 
 const envArgs = (env) => Object.entries(env || {}).flatMap(([k, v]) => ['--env', `${k}=${v}`]);
 
-function splitPane(targetPane, direction = 'right', ratio = 0.5, cwd, env) {
+function splitPane(targetPane, direction = 'right', ratio = 0.5, cwd, env, { focus = false } = {}) {
   const normDir = direction || 'right';
   if (normDir === 'left') {
     const rawRatio = ratio !== null && ratio !== undefined ? Number(ratio) : 0.5;
-    const paneId = splitPane(targetPane, 'right', rawRatio, cwd, env);
+    const paneId = splitPane(targetPane, 'right', rawRatio, cwd, env, { focus });
     paneSwap(targetPane, paneId);
     return paneId;
   }
   if (normDir === 'up') {
     const rawRatio = ratio !== null && ratio !== undefined ? Number(ratio) : 0.5;
-    const paneId = splitPane(targetPane, 'down', rawRatio, cwd, env);
+    const paneId = splitPane(targetPane, 'down', rawRatio, cwd, env, { focus });
     paneSwap(targetPane, paneId);
     return paneId;
   }
-  const args = ['pane', 'split', targetPane, '--direction', normDir, '--ratio', String(ratio), '--no-focus'];
+  const args = ['pane', 'split', targetPane, '--direction', normDir, '--ratio', String(ratio), focus ? '--focus' : '--no-focus'];
   if (cwd) args.push('--cwd', cwd);
   args.push(...envArgs(env));
   const result = herdr(args);
@@ -62,16 +62,16 @@ function splitPane(targetPane, direction = 'right', ratio = 0.5, cwd, env) {
   return id;
 }
 
-function splitLeft(targetPane, ratio = 0.5, cwd, env) {
-  return splitPane(targetPane, 'left', ratio, cwd, env);
+function splitLeft(targetPane, ratio = 0.5, cwd, env, opts) {
+  return splitPane(targetPane, 'left', ratio, cwd, env, opts);
 }
 
-function splitRight(targetPane, ratio = 0.5, cwd, env) {
-  return splitPane(targetPane, 'right', ratio, cwd, env);
+function splitRight(targetPane, ratio = 0.5, cwd, env, opts) {
+  return splitPane(targetPane, 'right', ratio, cwd, env, opts);
 }
 
-function splitDown(targetPane, ratio = 0.5, cwd, env) {
-  return splitPane(targetPane, 'down', ratio, cwd, env);
+function splitDown(targetPane, ratio = 0.5, cwd, env, opts) {
+  return splitPane(targetPane, 'down', ratio, cwd, env, opts);
 }
 
 function focusPane(paneId) {

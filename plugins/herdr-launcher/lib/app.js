@@ -297,7 +297,7 @@ class App {
     this.running = false;
     this.screen.stop();
     if (this.options.closesPane && !this.popup && this.paneId && this.hasNeighbour()) {
-      h.detachedHerdr(['pane', 'close', this.paneId]);
+      h.paneClose(this.paneId);
     }
     process.exit(0);
   }

@@ -15,7 +15,7 @@ const colsArg = argv.indexOf('--cols');
 const cols = colsArg !== -1 && argv[colsArg + 1] ? Number(argv[colsArg + 1]) : dock.defaultCols();
 
 function startWatcher() {
-  if (argv.includes('--no-watch')) return;
+  if (!argv.includes('--watch') || argv.includes('--no-watch')) return;
   const child = spawn(process.execPath, [path.join(__dirname, 'watch-tabs.js'), '--start'], {
     detached: true,
     windowsHide: true,
@@ -31,57 +31,24 @@ function main() {
 
   const inTab = panes.filter((p) => p.tab_id === focused.tab_id);
   const mine = inTab.filter(isOurs);
+  const forceFocus = argv.includes('--focus');
 
-  const deadMine = mine.filter((p) => dock.launcherIsDead(p.pane_id, p));
-  const liveMine = mine.filter((p) => dock.launcherIsLive(p.pane_id, p));
-
-  if (deadMine.length > 0 && liveMine.length > 0) {
-    for (const p of deadMine) {
-      if (!dryRun) h.paneClose(p.pane_id);
+  if (mine.length && !forceOpen) {
+    if (forceFocus) {
+      const target = mine[0];
+      if (dryRun) return report({ action: 'focus', pane: target.pane_id });
+      h.focusPane(target.pane_id);
+      return report({ action: 'focused', pane: target.pane_id });
     }
-  }
-
-  if (deadMine.length > 0 && liveMine.length === 0 && !forceClose) {
-    const target = deadMine.find((p) => dock.onRightEdge(p.pane_id)) || deadMine[0];
-    for (const p of deadMine) {
-      if (p.pane_id !== target.pane_id && !dryRun) {
-        h.paneClose(p.pane_id);
-      }
+    const target = mine.find((p) => p.focused) || mine[0];
+    if (dryRun) return report({ action: 'close', pane: target.pane_id });
+    for (const p of mine) {
+      h.paneClose(p.pane_id);
     }
-    if (dryRun) {
-      return report({
-        action: 'adopt',
-        pane: target.pane_id,
-        command: dock.launchCommand({ paneId: target.pane_id }),
-      });
-    }
-    const result = dock.adopt({ paneId: target.pane_id, pane: target });
-    h.focusPane(target.pane_id);
-    startWatcher();
-    if (result.skipped) return report({ action: 'focused', pane: target.pane_id, reason: result.skipped });
-    return report({ action: 'adopted', ...result });
-  }
-
-  if (liveMine.length && !forceOpen) {
-    const focusedMine = liveMine.find((p) => p.focused);
-    if (focusedMine || forceClose) {
-      const target = focusedMine || liveMine[0];
-      if (dryRun) return report({ action: 'close', pane: target.pane_id });
-      h.paneClose(target.pane_id);
-      return report({ action: 'closed', pane: target.pane_id });
-    }
-    if (dryRun) return report({ action: 'focus', pane: liveMine[0].pane_id });
-    h.focusPane(liveMine[0].pane_id);
-    return report({ action: 'focused', pane: liveMine[0].pane_id });
+    return report({ action: 'closed', pane: target.pane_id });
   }
 
   if (forceClose) {
-    if (deadMine.length) {
-      for (const p of deadMine) {
-        if (!dryRun) h.paneClose(p.pane_id);
-      }
-      return report({ action: 'closed', panes: deadMine.map((p) => p.pane_id) });
-    }
     return report({ action: 'noop', reason: 'no launcher pane in this tab' });
   }
 

@@ -193,7 +193,7 @@ function watch() {
 
   const periodicTimer = setInterval(() => {
     try {
-      dockAll('periodic-check');
+      reconcileAll('periodic-check');
     } catch (_) {}
   }, 1500);
 
@@ -354,7 +354,8 @@ try {
     else if (argv.includes('--status')) action = 'status';
     else if (argv.includes('--once')) action = 'dock-once';
 
-    const autoDockVal = action === 'stop' ? false : (readConfig('watch.json') || {}).autoDock !== false;
+    const autoDockVal =
+      action === 'start' ? true : action === 'stop' ? false : Boolean((readConfig('watch.json') || {}).autoDock);
     process.stdout.write(
       `${JSON.stringify({
         action,

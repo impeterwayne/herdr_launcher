@@ -98,7 +98,7 @@ function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = fals
 
   const ratio = Math.min(0.95, Math.max(0.1, (width - cols) / width));
 
-  const paneId = h.splitRight(target.pane_id, ratio, cwd);
+  const paneId = h.splitRight(target.pane_id, ratio, cwd, undefined, { focus });
 
   h.paneRename(paneId, RESTORED_LABEL);
 
@@ -109,7 +109,6 @@ function open({ anchorPane, cwd, cols = defaultCols(), focus = true, shim = fals
   const command = launchCommand({ paneId, shim, view });
   liveness.claim(paneId);
   h.paneRun(paneId, ...command);
-  if (focus) h.focusPane(paneId);
   return { pane: paneId, ratio: Number(ratio.toFixed(4)), command, targetWidth: width };
 }
 

@@ -205,6 +205,9 @@ function testToolPopupsDryRun() {
   const startupJs = path.join(BIN_DIR, 'startup.js');
   const startupDry = runJson(startupJs, ['--dry-run', '--timeout', '100']);
   assert(startupDry.action === 'startup' || startupDry.action === 'noop', 'startup.js dry-run works');
+  if (startupDry.action === 'startup') {
+    assert(startupDry.watcher === 'not started', 'startup.js does not auto-start tab watcher by default');
+  }
 
   const dock = require('../lib/dock');
   assert(dock.BAR_COLS === 20, 'dock.BAR_COLS is 20 columns');
@@ -819,9 +822,15 @@ function testTabWatcherAndAutoDock() {
   const res3 = extractTabInfo(env3);
   assert(res3 && res3.tabId === 'tab-103' && res3.label === 'Dev', 'extractTabInfo parses params tab.created event with label');
 
-  // Verify autoDock defaults to true
+  // Verify autoDock defaults to false (manual shortcut toggle by default)
   const watchCfg = context.readConfig('watch.json') || {};
-  assert(watchCfg.autoDock !== false, 'autoDock configuration defaults to enabled (true)');
+  assert(Boolean(watchCfg.autoDock) === false, 'autoDock configuration defaults to disabled (false)');
+
+  const toggleContent = fs.readFileSync(path.join(BIN_DIR, 'toggle-launcher.js'), 'utf8');
+  assert(
+    toggleContent.includes("!argv.includes('--watch')"),
+    'toggle-launcher does not auto-start tab watcher unless --watch is passed'
+  );
 }
 
 function testDeadProcessRecoveryAndOrphanAdoption() {

@@ -8,6 +8,9 @@ Launch AI coding agents in permission-skipping ("YOLO") mode with one keystroke,
 
 Zero npm dependencies — written in standard CommonJS run directly by Node.js. Verified on Linux, macOS, and Windows 11.
 
+> [!IMPORTANT]
+> **On-Demand Launcher Shortcut (`prefix + \`)**: The launcher sidebar does **not** auto-open on startup or in new tabs. Press **`prefix + \`** (by default <kbd>Ctrl</kbd> + <kbd>B</kbd>, then <kbd>\</kbd>) at any time to show, focus, or close the launcher sidebar on the right edge of your current tab.
+
 ---
 
 ## Features
@@ -43,10 +46,11 @@ mkdir -p ~/.config/herdr && cp plugins/herdr-launcher/config.example.toml ~/.con
 Copy-Item plugins\herdr-launcher\config.example.toml "$env:APPDATA\herdr\config.toml"
 ```
 
-### 4. Reload Herdr
+### 4. Reload Herdr & Open the Launcher
 ```bash
 herdr server reload-config
 ```
+Once reloaded, press **`prefix + \`** (<kbd>Ctrl</kbd> + <kbd>B</kbd> then <kbd>\</kbd>) inside any Herdr tab to open the launcher sidebar.
 
 ### 5. Font & Display Setup (Optional)
 The sidebar uses Nerd Font v3+ glyphs for status marks and icons. Install the recommended monospace fonts:
@@ -114,11 +118,11 @@ node scripts/self-test.js
 
 ## Keybindings
 
-`prefix` defaults to `ctrl+b`. All individual launchers use `prefix+alt` combinations to prevent accidental triggers during normal typing.
+`prefix` defaults to `ctrl+b`. The launcher does not open automatically — use **`prefix+\`** (<kbd>Ctrl</kbd>+<kbd>B</kbd> then <kbd>\</kbd>) to toggle the sidebar whenever you need it, or trigger individual launchers directly with `prefix+alt` shortcuts.
 
 | Key | Action |
 | :--- | :--- |
-| `prefix+\` | Toggle docked sidebar (right edge) |
+| **`prefix+\`** | **Show / Toggle docked launcher sidebar (right edge)** |
 | `prefix+alt+m` | Toggle Stack Mode (maximize pane + keep sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |

@@ -97,6 +97,23 @@ function main() {
       continue;
     }
 
+    const autoDock = argv.includes('--auto-dock');
+    const inTab = panes.filter((p) => p.tab_id === tab.tab_id);
+    const mine = inTab.filter(isOurs);
+    const workPanes = inTab.filter((p) => !isOurs(p));
+
+    if (!autoDock) {
+      if (mine.length && workPanes.length) {
+        for (const p of mine) {
+          if (!dryRun) h.paneClose(p.pane_id);
+        }
+        skipped.push({ tab: tab.tab_id, reason: 'closed restored launcher pane (manual toggle mode)' });
+        continue;
+      }
+      skipped.push({ tab: tab.tab_id, reason: 'autoDock disabled' });
+      continue;
+    }
+
     const orphans = dock.orphansIn(panes, tab.tab_id);
     const orphan = orphans.find((p) => dock.onRightEdge(p.pane_id)) || orphans[0] || null;
     if (orphan) {
@@ -120,22 +137,19 @@ function main() {
       continue;
     }
 
-    const autoDock = (readConfig('watch.json') || {}).autoDock !== false;
-    if (autoDock) {
-      if (dryRun) {
-        adopted.push({ tab: tab.tab_id, action: 'dock', command: dock.launchCommand() });
+    if (dryRun) {
+      adopted.push({ tab: tab.tab_id, action: 'dock', command: dock.launchCommand() });
+      continue;
+    }
+    try {
+      const result = dock.ensure({ tabId: tab.tab_id, panes, cols: dock.defaultCols(), focus: false });
+      if (result) {
+        log(`docked launcher in ${tab.tab_id}`);
+        adopted.push({ tab: tab.tab_id, ...result });
         continue;
       }
-      try {
-        const result = dock.ensure({ tabId: tab.tab_id, panes, cols: dock.defaultCols(), focus: false });
-        if (result) {
-          log(`docked launcher in ${tab.tab_id}`);
-          adopted.push({ tab: tab.tab_id, ...result });
-          continue;
-        }
-      } catch (err) {
-        log(`failed to dock in ${tab.tab_id}: ${err.message.split('\n')[0]}`);
-      }
+    } catch (err) {
+      log(`failed to dock in ${tab.tab_id}: ${err.message.split('\n')[0]}`);
     }
 
     skipped.push({ tab: tab.tab_id, reason: 'no restored launcher pane' });
@@ -144,7 +158,7 @@ function main() {
   const pruned = dryRun ? [] : stash.prune(panes, tabs);
   if (pruned.length) log(`pruned focus-mode entries: ${JSON.stringify(pruned)}`);
 
-  const autoDock = (readConfig('watch.json') || {}).autoDock !== false;
+  const autoDock = argv.includes('--auto-dock');
   const watch = autoDock && !argv.includes('--no-watch');
   if (watch && !dryRun) {
     startWatcher();

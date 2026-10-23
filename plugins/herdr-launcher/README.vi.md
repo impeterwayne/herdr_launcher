@@ -8,6 +8,9 @@ Khởi chạy các coding agent AI ở chế độ tự động hóa ("YOLO mode
 
 **Không phụ thuộc vào thư viện npm bên ngoài (Zero npm dependencies)** — được viết hoàn toàn bằng CommonJS tiêu chuẩn chạy trực tiếp trên Node.js. Đã kiểm thử và hoạt động ổn định trên Linux, macOS và Windows 11.
 
+> [!IMPORTANT]
+> **Mở Launcher bằng Phím tắt (`prefix + \`)**: Thanh bên launcher **không** tự động mở khi khởi động hay khi tạo tab mới. Nhấn **`prefix + \`** (mặc định là <kbd>Ctrl</kbd> + <kbd>B</kbd>, sau đó nhấn <kbd>\</kbd>) bất cứ lúc nào để mở, chuyển tiêu điểm (focus) hoặc đóng thanh bên ở cạnh phải của tab hiện tại.
+
 ---
 
 ## Tính năng nổi bật
@@ -52,10 +55,11 @@ mkdir -p ~/.config/herdr && cp plugins/herdr-launcher/config.example.toml ~/.con
 Copy-Item plugins\herdr-launcher\config.example.toml "$env:APPDATA\herdr\config.toml"
 ```
 
-### 4. Tải lại cấu hình Herdr
+### 4. Tải lại cấu hình Herdr & Mở Launcher
 ```bash
 herdr server reload-config
 ```
+Sau khi tải lại, nhấn **`prefix + \`** (<kbd>Ctrl</kbd> + <kbd>B</kbd> rồi nhấn <kbd>\</kbd>) trong bất kỳ tab Herdr nào để hiển thị thanh bên launcher.
 
 ### 5. Cài đặt Font & Hiển thị (Tùy chọn)
 Thanh bên sử dụng các ký tự biểu tượng Nerd Font v3+ cho các biểu tượng và ký hiệu trạng thái. Bạn có thể cài đặt nhanh các font monospace khuyến nghị bằng script tích hợp:
@@ -123,11 +127,11 @@ node scripts/self-test.js
 
 ## Bảng Phím tắt
 
-Phím `prefix` mặc định là `ctrl+b`. Tất cả các phím tắt khởi chạy riêng lẻ sử dụng tổ hợp `prefix+alt` nhằm tránh xung đột khi gõ phím thông thường.
+Phím `prefix` mặc định là `ctrl+b`. Thanh bên không tự động hiển thị — hãy nhấn **`prefix+\`** (<kbd>Ctrl</kbd>+<kbd>B</kbd> rồi <kbd>\</kbd>) để bật/tắt thanh bên bất cứ khi nào cần, hoặc dùng các tổ hợp `prefix+alt` để chạy nhanh từng công cụ riêng lẻ.
 
 | Phím tắt | Thao tác thực hiện |
 | :--- | :--- |
-| `prefix+\` | Bật / tắt thanh bên gắn cạnh phải (sidebar) |
+| **`prefix+\`** | **Hiển thị / Bật tắt thanh bên launcher gắn cạnh phải (sidebar)** |
 | `prefix+alt+m` | Bật / tắt Chế độ Ngăn xếp (Stack Mode - phóng to pane & giữ sidebar) |
 | `prefix+alt+a` | Antigravity CLI (`--dangerously-skip-permissions`) |
 | `prefix+alt+c` | Claude Code (`--dangerously-skip-permissions`) |
