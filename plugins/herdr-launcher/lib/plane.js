@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const {
   readConfig,
   writeConfig,
@@ -545,6 +546,252 @@ async function downloadFile(url, targetPath, options = {}) {
   }
 }
 
+function stripWinPrefix(p) {
+  if (!p || typeof p !== 'string') return p;
+  return p.startsWith('\\\\?\\') ? p.slice(4) : p;
+}
+
+let cachedFfmpegBin = null;
+function resolveFfmpegBin(customBin) {
+  if (customBin) return customBin;
+  if (cachedFfmpegBin) return cachedFfmpegBin;
+  if (process.platform === 'win32') {
+    const candidates = [
+      'C:\\ffmpeg\\bin\\ffmpeg.exe',
+      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe') : null,
+      process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'scoop', 'shims', 'ffmpeg.exe') : null,
+      'C:\\ProgramData\\chocolatey\\lib\\ffmpeg\\tools\\ffmpeg\\bin\\ffmpeg.exe',
+      'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe',
+    ].filter(Boolean);
+    for (const c of candidates) {
+      try {
+        if (fs.existsSync(c)) {
+          cachedFfmpegBin = c;
+          return c;
+        }
+      } catch (_) {}
+    }
+  }
+  cachedFfmpegBin = 'ffmpeg';
+  return cachedFfmpegBin;
+}
+
+function extractVideoFrames(rawVideoPath, options = {}) {
+  try {
+    const videoPath = stripWinPrefix(rawVideoPath);
+    if (!videoPath || !fs.existsSync(videoPath) || fs.statSync(videoPath).size === 0) {
+      return { ok: false, error: 'video file missing or empty', frames: [], storyboardPath: null, framesDir: null };
+    }
+
+    const dir = stripWinPrefix(path.dirname(videoPath));
+    const ext = path.extname(videoPath);
+    const mediaId = options.mediaId || path.basename(videoPath, ext);
+    const framesDir = stripWinPrefix(options.framesDir || path.join(dir, `${mediaId}_frames`));
+    const storyboardPath = stripWinPrefix(options.storyboardPath || path.join(dir, `${mediaId}_storyboard.jpg`));
+    const ffmpegBin = resolveFfmpegBin(options.ffmpegBin);
+    const spawnOpts = (timeout) => ({
+      cwd: dir,
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout,
+    });
+    const sceneThreshold = options.sceneThreshold ?? 0.05;
+    const minGapSec = options.minGapSec ?? 0.5;
+    const maxGapSec = options.maxGapSec ?? 1.0;
+    const maxFrames = options.maxFrames ?? 60;
+    const cols = options.cols ?? 4;
+    const metaPath = path.join(framesDir, '.frames-meta.json');
+    const expectedMeta = JSON.stringify({ sceneThreshold, minGapSec, maxGapSec, maxFrames });
+
+    if (
+      !options.force &&
+      fs.existsSync(storyboardPath) &&
+      fs.statSync(storyboardPath).size > 0 &&
+      fs.existsSync(framesDir) &&
+      fs.existsSync(metaPath)
+    ) {
+      let metaMatches = false;
+      try {
+        metaMatches = fs.readFileSync(metaPath, 'utf8') === expectedMeta;
+      } catch (_) {}
+      if (metaMatches) {
+        const existing = fs
+          .readdirSync(framesDir)
+          .filter((f) => /^frame_\d+_.*\.jpg$/i.test(f))
+          .sort();
+        if (existing.length > 0) {
+          return {
+            ok: true,
+            cached: true,
+            storyboardPath,
+            framesDir,
+            frames: existing,
+          };
+        }
+      }
+    }
+
+    fs.mkdirSync(framesDir, { recursive: true });
+    for (const old of fs.readdirSync(framesDir)) {
+      if (/^(raw_|frame_).*\.jpg$/i.test(old)) {
+        try {
+          fs.unlinkSync(path.join(framesDir, old));
+        } catch (_) {}
+      }
+    }
+
+    const selectExpr = `eq(n,0)+isnan(prev_selected_t)+gt(scene,${sceneThreshold})*gte(t-prev_selected_t,${minGapSec})+gte(t-prev_selected_t,${maxGapSec})`;
+    const vf = `select='${selectExpr}',showinfo`;
+    const rawPattern = path.join(framesDir, 'raw_%04d.jpg');
+
+    let step1 = spawnSync(
+      ffmpegBin,
+      ['-y', '-i', videoPath, '-vf', vf, '-fps_mode', 'vfr', '-q:v', '3', rawPattern],
+      spawnOpts(60000)
+    );
+
+    if (step1.status !== 0 && step1.stderr && step1.stderr.includes('fps_mode')) {
+      step1 = spawnSync(
+        ffmpegBin,
+        ['-y', '-i', videoPath, '-vf', vf, '-vsync', 'vfr', '-q:v', '3', rawPattern],
+        spawnOpts(60000)
+      );
+    }
+
+    const rawFiles = fs
+      .readdirSync(framesDir)
+      .filter((f) => /^raw_\d+\.jpg$/i.test(f))
+      .sort();
+
+    if (rawFiles.length === 0) {
+      return {
+        ok: false,
+        error: (step1.error && step1.error.message) || 'no frames extracted',
+        frames: [],
+        storyboardPath: null,
+        framesDir: null,
+      };
+    }
+
+    const stderr = String(step1.stderr || '');
+    let durationSec = 0;
+    const durMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (durMatch) {
+      durationSec = parseInt(durMatch[1], 10) * 3600 + parseInt(durMatch[2], 10) * 60 + parseFloat(durMatch[3]);
+    }
+
+    const ptsTimes = [];
+    const ptsRegex = /pts_time:([0-9.]+)/g;
+    let pm;
+    while ((pm = ptsRegex.exec(stderr)) !== null) {
+      const val = parseFloat(pm[1]);
+      if (Number.isFinite(val)) ptsTimes.push(val);
+    }
+
+    const candidates = rawFiles.map((f, idx) => ({
+      rawPath: path.join(framesDir, f),
+      time: Number.isFinite(ptsTimes[idx]) ? ptsTimes[idx] : idx * minGapSec,
+    }));
+
+    const lastTime = candidates[candidates.length - 1].time;
+    if (durationSec > 0.8 && durationSec - lastTime > 0.8) {
+      const lastRawPath = path.join(framesDir, 'raw_9999.jpg');
+      spawnSync(
+        ffmpegBin,
+        ['-y', '-sseof', '-0.3', '-i', videoPath, '-frames:v', '1', '-q:v', '3', lastRawPath],
+        spawnOpts(15000)
+      );
+      if (fs.existsSync(lastRawPath) && fs.statSync(lastRawPath).size > 0) {
+        candidates.push({
+          rawPath: lastRawPath,
+          time: Math.max(lastTime + 0.1, durationSec - 0.2),
+        });
+      }
+    }
+
+    let kept = candidates;
+    if (candidates.length > maxFrames && maxFrames >= 2) {
+      const keepIdx = new Set([0, candidates.length - 1]);
+      const inner = maxFrames - 2;
+      for (let k = 1; k <= inner; k++) {
+        keepIdx.add(Math.round((k * (candidates.length - 1)) / (inner + 1)));
+      }
+      kept = [];
+      candidates.forEach((c, idx) => {
+        if (keepIdx.has(idx)) {
+          kept.push(c);
+        } else {
+          try {
+            fs.unlinkSync(c.rawPath);
+          } catch (_) {}
+        }
+      });
+    }
+
+    const finalFrames = [];
+    for (let i = 0; i < kept.length; i++) {
+      const idxStr = String(i + 1).padStart(2, '0');
+      const secStr = kept[i].time.toFixed(1).padStart(4, '0');
+      const fileName = `frame_${idxStr}_${secStr}s.jpg`;
+      const destPath = path.join(framesDir, fileName);
+      fs.renameSync(kept[i].rawPath, destPath);
+      finalFrames.push({
+        fileName,
+        fullPath: destPath,
+        idxStr,
+        secStr,
+        time: kept[i].time,
+      });
+    }
+
+    const K = finalFrames.length;
+    const gridCols = Math.min(cols, K);
+    const gridRows = Math.ceil(K / gridCols);
+    const inputs = finalFrames.flatMap((f) => ['-i', f.fullPath]);
+
+    const buildFilter = (withText) => {
+      const scaleParts = finalFrames.map((f, i) => {
+        const textFilter = withText
+          ? `,drawtext=text='F${f.idxStr} ${f.secStr}s':x=8:y=8:fontsize=18:fontcolor=white:box=1:boxcolor=black@0.7:boxborderw=4`
+          : '';
+        return `[${i}:v]scale=480:-2${textFilter}[v${i}]`;
+      });
+      const concatInputs = finalFrames.map((_, i) => `[v${i}]`).join('');
+      const tilePart = `${concatInputs}concat=n=${K}:v=1:a=0,tile=${gridCols}x${gridRows}:padding=6:margin=6:color=0x181825[out]`;
+      return [...scaleParts, tilePart].join(';');
+    };
+
+    let step2 = spawnSync(
+      ffmpegBin,
+      ['-y', ...inputs, '-filter_complex', buildFilter(true), '-map', '[out]', '-frames:v', '1', '-q:v', '3', storyboardPath],
+      spawnOpts(30000)
+    );
+
+    if ((step2.status !== 0 || !fs.existsSync(storyboardPath)) && K > 0) {
+      step2 = spawnSync(
+        ffmpegBin,
+        ['-y', ...inputs, '-filter_complex', buildFilter(false), '-map', '[out]', '-frames:v', '1', '-q:v', '3', storyboardPath],
+        spawnOpts(30000)
+      );
+    }
+
+    const hasStoryboard = fs.existsSync(storyboardPath) && fs.statSync(storyboardPath).size > 0;
+    try {
+      fs.writeFileSync(metaPath, expectedMeta, 'utf8');
+    } catch (_) {}
+    return {
+      ok: true,
+      cached: false,
+      storyboardPath: hasStoryboard ? storyboardPath : null,
+      framesDir,
+      frames: finalFrames.map((f) => f.fileName),
+    };
+  } catch (err) {
+    return { ok: false, error: err.message, frames: [], storyboardPath: null, framesDir: null };
+  }
+}
+
 function extractMediaReferences(html) {
   if (!html || typeof html !== 'string') return [];
   const refs = [];
@@ -642,6 +889,138 @@ function categorizeIssues(issues, stateMap) {
   return { backlog, todo, inProgress, done, cancelled, other };
 }
 
+async function fetchIssueComments(cfg, issueId) {
+  if (!issueId || !isConfigured(cfg)) return [];
+  try {
+    const payload = await get(cfg, `/issues/${issueId}/comments/`);
+    const list = unwrap(payload);
+    return Array.isArray(list) ? list.filter((c) => !c.deleted_at) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function htmlToMarkdown(html) {
+  if (!html) return '';
+  let text = String(html)
+    .replace(/<image-component\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi, ' [Attachment: $1] ')
+    .replace(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi, ' [Image: $1] ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+  return text
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function linkLocalMediaInText(text, mediaList = []) {
+  if (!text || !Array.isArray(mediaList) || mediaList.length === 0) return text;
+  let out = text;
+  for (const m of mediaList) {
+    const localFile = m.localPath ? path.basename(m.localPath) : `${m.mediaId}.${m.type === 'video' ? 'mp4' : 'png'}`;
+    if (m.type === 'video') {
+      const sbFile = m.storyboardPath ? path.basename(m.storyboardPath) : null;
+      const fDirName = m.framesDir ? path.basename(m.framesDir) : `${m.mediaId}_frames`;
+      const localRef = `[Local Video: ./${localFile}](./${localFile})${sbFile ? ` | [Storyboard: ./${sbFile}](./${sbFile})` : ''}${Array.isArray(m.frames) && m.frames.length > 0 ? ` | [Keyframes: ./${fDirName}/](./${fDirName}/)` : ''}`;
+      if (m.webUrl && out.includes(m.webUrl)) {
+        out = out.split(m.webUrl).join(`${m.webUrl} → ${localRef}`);
+      }
+    } else if (m.type === 'image') {
+      const localRef = `![${m.mediaId}](./${localFile})`;
+      if (m.webUrl && out.includes(m.webUrl)) {
+        out = out.split(m.webUrl).join(`${m.webUrl} → ${localRef}`);
+      }
+      if (m.mediaId && out.includes(`[Attachment: ${m.mediaId}]`)) {
+        out = out.split(`[Attachment: ${m.mediaId}]`).join(localRef);
+      }
+    }
+  }
+  return out;
+}
+
+function generateTaskMD(cfg, task, taskID, comments = [], mediaList = []) {
+  const title = task.name || 'Untitled Task';
+  const stateName = task.stateName || 'Unknown';
+  const priority = formatPriority(task.priority);
+  const startDate = formatDate(task.start_date);
+  const updatedAt = formatDate(task.updated_at || task.updatedAt);
+  const issueUrl =
+    cfg && cfg.baseUrl && cfg.workspaceSlug && cfg.projectId && task.id
+      ? `${cfg.baseUrl.replace(/\/+$/, '')}/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}`
+      : '';
+
+  let md = `# ${taskID}: ${title}\n\n`;
+  md += `- **State:** ${stateName}\n`;
+  md += `- **Priority:** ${priority}\n`;
+  md += `- **Start Date:** \`${startDate}\`\n`;
+  md += `- **Last Updated:** \`${updatedAt}\`\n`;
+  if (issueUrl) md += `- **Plane Issue URL:** ${issueUrl}\n`;
+  md += `\n---\n\n`;
+
+  md += `## 📝 Description\n\n`;
+  const descMd = linkLocalMediaInText(htmlToMarkdown(task.description_html), mediaList);
+  md += `${descMd || '*(No description provided)*'}\n\n`;
+
+  md += `---\n\n`;
+  md += `## 💬 Comments (${Array.isArray(comments) ? comments.length : 0})\n\n`;
+  if (Array.isArray(comments) && comments.length > 0) {
+    comments.forEach((c, idx) => {
+      const cTime = formatDate(c.created_at || c.updated_at);
+      const author =
+        (c.actor_detail && (c.actor_detail.display_name || c.actor_detail.first_name)) ||
+        c.created_by ||
+        'Member';
+      const rawBody = htmlToMarkdown(c.comment_html) || cleanHTML(c.comment_html) || '*(empty comment)*';
+      const body = linkLocalMediaInText(rawBody, mediaList);
+      md += `### Comment #${idx + 1} · \`${cTime}\` (${author})\n\n`;
+      md += `${body}\n\n`;
+    });
+  } else {
+    md += `*(No comments)*\n\n`;
+  }
+
+  if (Array.isArray(mediaList) && mediaList.length > 0) {
+    md += `---\n\n`;
+    md += `## 📎 Downloaded Evidence & Extracted Frames\n\n`;
+    for (const m of mediaList) {
+      const localFile = m.localPath ? path.basename(m.localPath) : `${m.mediaId}.${m.type === 'video' ? 'mp4' : 'png'}`;
+      const posterFile = m.posterPath ? path.basename(m.posterPath) : `${m.mediaId}_poster.jpg`;
+      if (m.type === 'image') {
+        md += `- **Screenshot [${m.mediaId}](${m.webUrl}):** [./${localFile}](./${localFile})\n`;
+        md += `  ![${m.mediaId}](./${localFile})\n`;
+      } else if (m.type === 'video') {
+        md += `- **Video Recording [${m.mediaId}](${m.webUrl}):** [Full MP4 Video (./${localFile})](./${localFile}) | [Poster (./${posterFile})](./${posterFile})\n`;
+        md += `  <video controls src="./${localFile}" poster="./${posterFile}" width="480"></video>\n`;
+        if (m.storyboardPath) {
+          const sbFile = path.basename(m.storyboardPath);
+          const frameCount = Array.isArray(m.frames) && m.frames.length > 0 ? ` (${m.frames.length} keyframes @ 1s interval)` : '';
+          md += `  - **Storyboard Overview${frameCount}:** [./${sbFile}](./${sbFile})\n`;
+          md += `    ![Storyboard](./${sbFile})\n`;
+        }
+        if (Array.isArray(m.frames) && m.frames.length > 0) {
+          const fDirName = m.framesDir ? path.basename(m.framesDir) : `${m.mediaId}_frames`;
+          const links = m.frames.map((f) => `[${f}](./${fDirName}/${f})`).join(', ');
+          md += `  - **Extracted Keyframes (\`./${fDirName}/\`):** ${links}\n`;
+        }
+      }
+    }
+    md += `\n`;
+  }
+
+  return md;
+}
+
 function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, selectedCategories = ['all'], options = {}) {
   const { backlog, todo, inProgress, done, cancelled, other } = categorizeIssues(issues, stateMap);
   const totalCount = issues.length;
@@ -681,6 +1060,11 @@ function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, select
     const seq = item.sequence_id || item.sequence;
     const itemPrefix = projectIdentifier || item.project_detail?.identifier || item.project_identifier || '';
     const taskTag = itemPrefix ? `${itemPrefix}-${seq}` : `#${seq}`;
+    const taskFolderTag = itemPrefix ? `${itemPrefix}-${seq}` : `TASK-${seq}`;
+    const tMd = item.taskMdPath
+      ? item.taskMdPath.replace(/^\.\/evidence/, evidenceBase)
+      : `${evidenceBase}/${taskFolderTag}/TASK.md`;
+    if (true) return `- [${checkbox}] **${taskTag}**: ${item.name} → [TASK.md](${tMd})\n`;
     let itemMd = `- [${checkbox}] **${taskTag}**: ${item.name}\n`;
     itemMd += `  - **Priority:** ${formatPriority(item.priority)} | **Start Date:** \`${formatDate(item.start_date)}\``;
     if (item.updated_at || item.updatedAt) {
@@ -689,6 +1073,19 @@ function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, select
     itemMd += `\n`;
     const desc = cleanHTML(item.description_html);
     if (desc) itemMd += `  - **Details/Evidence:** ${desc}\n`;
+    if (item.taskMdPath) {
+      const tMd = item.taskMdPath.replace(/^\.\/evidence/, evidenceBase);
+      itemMd += `  - **Task Description & Comments File:** [TASK.md](${tMd})\n`;
+    }
+    if (Array.isArray(item.comments) && item.comments.length > 0) {
+      itemMd += `  - **Comments (${item.comments.length}):**\n`;
+      for (const c of item.comments) {
+        const cText = cleanHTML(c.comment_html);
+        if (cText) {
+          itemMd += `    - \`${formatDate(c.created_at || c.updated_at)}\`: ${cText}\n`;
+        }
+      }
+    }
 
     const mediaList = mediaMap && mediaMap.get(seq);
     if (mediaList && mediaList.length > 0) {
@@ -706,6 +1103,16 @@ function generateTaskListMD(cfg, issues, stateMap, mediaMap, projectInfo, select
         } else if (m.type === 'video') {
           itemMd += `    - Video Recording: [${m.mediaId}](${m.webUrl}) → [Full MP4 Video](${mediaPath})\n`;
           itemMd += `      <video controls src="${mediaPath}" poster="${posterPath}" width="480"></video>\n`;
+          if (m.storyboardPath) {
+            const sbPath = m.storyboardPath.replace(/^\.\/evidence/, evidenceBase);
+            const frameCount = Array.isArray(m.frames) && m.frames.length > 0 ? ` (${m.frames.length} keyframes)` : '';
+            itemMd += `      - Storyboard Overview${frameCount}: ![Storyboard](${sbPath})\n`;
+          }
+          if (Array.isArray(m.frames) && m.frames.length > 0) {
+            const fDir = (m.framesDir || `./evidence/${taskTag}/${m.mediaId}_frames`).replace(/^\.\/evidence/, evidenceBase);
+            const frameLinks = m.frames.map((f) => `[${f}](${fDir}/${f})`).join(', ');
+            itemMd += `      - Extracted Keyframes (\`${fDir}/\`): ${frameLinks}\n`;
+          }
         }
       }
     }
@@ -812,8 +1219,8 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
     throw new Error(`Plane is not configured for ${worktreePath}`);
   }
 
-  const targetDir = worktreePath ? path.resolve(worktreePath) : process.cwd();
-  const parentRoot = findParentRepoRoot(targetDir) || findRepoRoot(targetDir) || targetDir;
+  const targetDir = stripWinPrefix(worktreePath ? path.resolve(stripWinPrefix(worktreePath)) : process.cwd());
+  const parentRoot = stripWinPrefix(findParentRepoRoot(targetDir) || findRepoRoot(targetDir) || targetDir);
   const allWorktrees = findAllWorktrees(targetDir);
 
   const planeDir = path.join(parentRoot, 'plane');
@@ -831,7 +1238,9 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
     }
   } catch (_) {}
 
-  progressCb('Fetching tasks and states from Plane API…');
+  const yieldTick = () => new Promise((r) => setTimeout(r, 0));
+  progressCb('[5%] Fetching tasks and states from Plane API…');
+  await yieldTick();
   const [statePayload, issuePayload, projectInfo] = await Promise.all([
     get(cfg, '/states/'),
     get(cfg, '/issues/'),
@@ -858,7 +1267,8 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
   fs.writeFileSync(path.join(rawDir, 'states.json'), JSON.stringify(states, null, 2), 'utf8');
 
   // Download evidence
-  progressCb(`Scanning and downloading evidence media for ${issuesList.length} tasks…`);
+  progressCb(`[10%] Scanning and downloading evidence media for ${issuesList.length} tasks…`);
+  await yieldTick();
   const mediaMap = new Map();
   const defaultProjIdentifier = (projectInfo && projectInfo.identifier) || '';
 
@@ -872,9 +1282,16 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
       defaultProjIdentifier;
     const taskID = projPrefix ? `${projPrefix}-${seq}` : `TASK-${seq}`;
     const taskMediaList = [];
+    const totalTasks = issuesList.length || 1;
+    const taskPct = Math.round(10 + (i / totalTasks) * 85);
+    progressCb(`[${taskPct}%] (${i + 1}/${totalTasks}) Fetching ${taskID}: ${(task.name || '').slice(0, 32)}…`);
+    await yieldTick();
 
     // Scan and download media
-    const mediaRefs = extractMediaReferences(desc);
+    const taskComments = await fetchIssueComments(cfg, task.id);
+    task.comments = taskComments;
+    const combinedHtml = [desc, ...taskComments.map((c) => c.comment_html || '')].join('\n');
+    const mediaRefs = extractMediaReferences(combinedHtml);
     for (const ref of mediaRefs) {
       if (ref.kind === 'plane-image') {
         const isHttp = ref.isHttp;
@@ -925,7 +1342,8 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
         if (!mediaId || taskMediaList.some((m) => m.mediaId === mediaId)) continue;
         const targetFilePath = path.join(evidenceDir, taskID, `${mediaId}.png`);
         const relLocalPath = `./evidence/${taskID}/${mediaId}.png`;
-        const imgUrl = await scrapeLightshotImageURL(webUrl);
+        const isImgCached = fs.existsSync(targetFilePath) && fs.statSync(targetFilePath).size > 0;
+        const imgUrl = isImgCached ? webUrl : await scrapeLightshotImageURL(webUrl);
         if (imgUrl) {
           const dlRes = await downloadFile(imgUrl, targetFilePath);
           if (dlRes.success) {
@@ -944,7 +1362,12 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
         const targetPosterPath = path.join(evidenceDir, taskID, `${mediaId}_poster.jpg`);
         const relVideoPath = `./evidence/${taskID}/${mediaId}.mp4`;
         const relPosterPath = `./evidence/${taskID}/${mediaId}_poster.jpg`;
-        const { videoUrl, posterUrl } = await scrapeStreamableMediaURLs(mediaId, webUrl);
+        const isVidCached = fs.existsSync(targetVideoPath) && fs.statSync(targetVideoPath).size > 0;
+        const isPosterCached = fs.existsSync(targetPosterPath) && fs.statSync(targetPosterPath).size > 0;
+        const { videoUrl, posterUrl } =
+          isVidCached && isPosterCached
+            ? { videoUrl: webUrl, posterUrl: webUrl }
+            : await scrapeStreamableMediaURLs(mediaId, webUrl);
         if (posterUrl) {
           await downloadFile(posterUrl, targetPosterPath);
         }
@@ -957,6 +1380,20 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
               mediaId,
               localPath: relVideoPath,
               posterPath: relPosterPath,
+              ...(() => {
+                progressCb(`[${taskPct}%] (${i + 1}/${totalTasks}) Extracting keyframes for ${taskID} (${mediaId})…`);
+                const vfRes = extractVideoFrames(targetVideoPath, { mediaId });
+                if (vfRes.ok && vfRes.frames && vfRes.frames.length > 0 && !fs.existsSync(targetPosterPath)) {
+                  try {
+                    fs.copyFileSync(path.join(vfRes.framesDir, vfRes.frames[0]), targetPosterPath);
+                  } catch (_) {}
+                }
+                return {
+                  storyboardPath: vfRes.ok && vfRes.storyboardPath ? `./evidence/${taskID}/${mediaId}_storyboard.jpg` : null,
+                  framesDir: vfRes.ok && vfRes.frames && vfRes.frames.length > 0 ? `./evidence/${taskID}/${mediaId}_frames` : null,
+                  frames: vfRes.ok && vfRes.frames ? vfRes.frames : [],
+                };
+              })(),
             });
           }
         }
@@ -986,6 +1423,23 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
               if (dlRes.success) {
                 taskMediaList.push({
                   type: isVideo ? 'video' : 'image',
+                  ...(isVideo
+                    ? (() => {
+                        const vfRes = extractVideoFrames(targetPath, { mediaId: attId });
+                        const targetPoster = path.join(evidenceDir, taskID, `${attId}_poster.jpg`);
+                        if (vfRes.ok && vfRes.frames && vfRes.frames.length > 0 && !fs.existsSync(targetPoster)) {
+                          try {
+                            fs.copyFileSync(path.join(vfRes.framesDir, vfRes.frames[0]), targetPoster);
+                          } catch (_) {}
+                        }
+                        return {
+                          posterPath: `./evidence/${taskID}/${attId}_poster.jpg`,
+                          storyboardPath: vfRes.ok && vfRes.storyboardPath ? `./evidence/${taskID}/${attId}_storyboard.jpg` : null,
+                          framesDir: vfRes.ok && vfRes.frames && vfRes.frames.length > 0 ? `./evidence/${taskID}/${attId}_frames` : null,
+                          frames: vfRes.ok && vfRes.frames ? vfRes.frames : [],
+                        };
+                      })()
+                    : {}),
                   webUrl: `${cfg.baseUrl.replace(/\/+$/, '')}/${cfg.workspaceSlug}/projects/${cfg.projectId}/issues/${task.id}`,
                   mediaId: attId,
                   localPath: relPath,
@@ -997,13 +1451,22 @@ async function syncProject(worktreePath, cfg = config(worktreePath), options = {
       } catch (_) {}
     }
 
+    try {
+      const taskFolder = path.join(evidenceDir, taskID);
+      fs.mkdirSync(taskFolder, { recursive: true });
+      const taskMdContent = generateTaskMD(cfg, task, taskID, taskComments, taskMediaList);
+      fs.writeFileSync(path.join(taskFolder, 'TASK.md'), taskMdContent, 'utf8');
+      task.taskMdPath = `./evidence/${taskID}/TASK.md`;
+    } catch (_) {}
+
     if (taskMediaList.length > 0) {
       mediaMap.set(seq, taskMediaList);
     }
   }
 
   // Generate TASK_LIST markdown (only inside plane/)
-  progressCb('Writing plane/TASK_LIST.md…');
+  progressCb('[98%] Writing plane/TASK_LIST.md…');
+  await yieldTick();
   const mdContent = generateTaskListMD(cfg, issuesList, stateMap, mediaMap, projectInfo, selectedCategories, {
     evidenceBase: './evidence',
   });
@@ -1081,6 +1544,10 @@ module.exports = {
   findAllWorktrees,
   syncProject,
   extractMediaReferences,
+  extractVideoFrames,
+  fetchIssueComments,
+  htmlToMarkdown,
+  generateTaskMD,
 };
 
 if (require.main === module) {

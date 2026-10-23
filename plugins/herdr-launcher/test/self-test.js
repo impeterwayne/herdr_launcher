@@ -612,6 +612,79 @@ async function testPlaneConfig() {
     assert(refs.some((r) => r.kind === 'prnt.sc' && r.mediaId === 'lightshot1'), 'extractMediaReferences detects prnt.sc links');
     assert(refs.some((r) => r.kind === 'streamable' && r.mediaId === 'video1'), 'extractMediaReferences detects streamable links');
 
+    // Test extractVideoFrames (hybrid keyframes + storyboard) and generateTaskListMD video formatting
+    assert(typeof plane.extractVideoFrames === 'function', 'plane.extractVideoFrames is exported');
+    const sampleVidMediaMap = new Map([
+      [
+        101,
+        [
+          {
+            type: 'video',
+            mediaId: 'vid1',
+            webUrl: 'https://streamable.com/vid1',
+            localPath: './evidence/TASK-101/vid1.mp4',
+            posterPath: './evidence/TASK-101/vid1_poster.jpg',
+            storyboardPath: './evidence/TASK-101/vid1_storyboard.jpg',
+            framesDir: './evidence/TASK-101/vid1_frames',
+            frames: ['frame_01_00.0s.jpg', 'frame_02_01.5s.jpg', 'frame_03_03.0s.jpg'],
+          },
+        ],
+      ],
+    ]);
+    const mdVideo = plane.generateTaskListMD(
+      { workspaceSlug: 'product', projectId: 'test-proj' },
+      sampleIssues,
+      sampleStateMap,
+      sampleVidMediaMap,
+      null,
+      ['all']
+    );
+    assert(mdVideo.includes('[TASK.md](./evidence/TASK-101/TASK.md)'), 'generateTaskListMD links concisely to per-task TASK.md');
+
+    const perTaskMd = plane.generateTaskMD(
+      { baseUrl: 'https://plane.test', workspaceSlug: 'product', projectId: 'test-proj' },
+      { id: 'i1', name: 'Video Bug', description_html: '<p>See https://streamable.com/vid1</p>' },
+      'TASK-101',
+      [],
+      sampleVidMediaMap.get(101)
+    );
+    assert(perTaskMd.includes('Storyboard Overview (3 keyframes @ 1s interval)'), 'generateTaskMD includes storyboard overview with keyframe count');
+    assert(perTaskMd.includes('./vid1_storyboard.jpg'), 'generateTaskMD links storyboard image');
+    assert(perTaskMd.includes('[frame_01_00.0s.jpg](./vid1_frames/frame_01_00.0s.jpg)'), 'generateTaskMD links individual keyframes');
+    assert(perTaskMd.includes('[Local Video: ./vid1.mp4](./vid1.mp4)'), 'generateTaskMD references local video inline in description');
+    assert(perTaskMd.includes('<video controls src="./vid1.mp4"'), 'generateTaskMD embeds video player tag');
+
+    const { spawnSync: cpSpawnSync } = require('node:child_process');
+    const ffCheck = cpSpawnSync('ffmpeg', ['-version'], { encoding: 'utf8', windowsHide: true });
+    if (ffCheck.status === 0) {
+      const testVidDir = path.join(tmpDir, 'vid-extract-test');
+      fs.mkdirSync(testVidDir, { recursive: true });
+      const testVidPath = path.join(testVidDir, 'demo.mp4');
+      cpSpawnSync(
+        'ffmpeg',
+        [
+          '-y',
+          '-f', 'lavfi', '-i', 'color=c=red:s=320x180:d=1.2',
+          '-f', 'lavfi', '-i', 'color=c=green:s=320x180:d=1.2',
+          '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:d=1.2',
+          '-filter_complex', '[0:v][1:v][2:v]concat=n=3:v=1:a=0[out]',
+          '-map', '[out]', '-r', '10', testVidPath,
+        ],
+        { encoding: 'utf8', windowsHide: true }
+      );
+      const vfRes = plane.extractVideoFrames(testVidPath, { mediaId: 'demo' });
+      assert(vfRes.ok === true && vfRes.cached === false, 'extractVideoFrames extracts frames from multi-scene video');
+      assert(vfRes.frames.length >= 3, 'extractVideoFrames detects scene transitions and final frame');
+      assert(Boolean(vfRes.storyboardPath && fs.existsSync(vfRes.storyboardPath)), 'extractVideoFrames generates storyboard grid image');
+      assert(fs.existsSync(path.join(vfRes.framesDir, vfRes.frames[0])), 'extractVideoFrames writes individual keyframe files');
+
+      const vfCached = plane.extractVideoFrames(testVidPath, { mediaId: 'demo' });
+      assert(vfCached.ok === true && vfCached.cached === true, 'extractVideoFrames reuses cached storyboard and frames on subsequent calls');
+
+      const vfExtended = plane.extractVideoFrames(`\\\\?\\${testVidPath}`, { mediaId: 'demo', force: true });
+      assert(vfExtended.ok === true && vfExtended.frames.length >= 3, 'extractVideoFrames handles Windows \\\\?\\ extended path prefixes');
+    }
+
     // Test syncProject across all worktrees with mocked fetch and evidence downloading
     const origFetch = globalThis.fetch;
     try {
@@ -619,7 +692,7 @@ async function testPlaneConfig() {
         if (url.includes('/states/')) {
           return { ok: true, json: async () => [{ id: 's1', name: 'Backlog', group: 'backlog' }] };
         }
-        if (url.includes('/issues/') && !url.includes('/issue-attachments/')) {
+        if (url.includes('/issues/') && !url.includes('/issue-attachments/') && !url.includes('/comments/')) {
           return {
             ok: true,
             json: async () => [
@@ -646,19 +719,36 @@ async function testPlaneConfig() {
         if (url.includes('/issue-attachments/')) {
           return { ok: true, json: async () => [] };
         }
+        if (url.includes('/comments/')) {
+          return {
+            ok: true,
+            json: async () => [
+              {
+                id: 'c1',
+                created_at: '2026-10-23T09:00:00Z',
+                comment_html: '<p>Each slider has a different range</p>',
+                deleted_at: null,
+              },
+            ],
+          };
+        }
         if (url.includes('/projects/')) {
           return { ok: true, json: async () => ({ id: 'test-proj', name: 'Test Project', identifier: 'TEST' }) };
         }
         return { ok: false, status: 404 };
       };
 
+      const progressMsgs = [];
       const syncRes = await plane.syncProject(subFolder, {
         baseUrl: 'https://plane.test',
         workspaceSlug: 'test',
         projectId: 'test-proj',
         apiKey: 'key',
+      }, {}, (m) => progressMsgs.push(m));
+      if (false) ({
       });
       assert(syncRes.ok, 'syncProject succeeds across all worktrees');
+      assert(progressMsgs.some((m) => /\[\d+%\]/.test(m)), 'syncProject emits progress messages with percentage');
       assert(syncRes.evidenceCount === 1, 'syncProject downloaded 1 embedded image asset');
       assert(!fs.existsSync(path.join(parentRepo, 'TASK_LIST.md')), 'syncProject does not create TASK_LIST.md in parent repo root');
       assert(!fs.existsSync(path.join(linkedWorktree, 'TASK_LIST.md')), 'syncProject does not create TASK_LIST.md in linked worktree root');
@@ -669,7 +759,12 @@ async function testPlaneConfig() {
       assert(fs.existsSync(path.join(linkedWorktree, 'plane', 'TASK_LIST.md')), 'syncProject makes plane/TASK_LIST.md accessible in linked worktree');
       assert(fs.existsSync(path.join(parentRepo, 'plane', 'evidence', 'TEST-101', 'asset-img-123.png')), 'syncProject saved evidence image to disk');
       const savedMd = fs.readFileSync(path.join(parentRepo, 'plane', 'TASK_LIST.md'), 'utf8');
-      assert(savedMd.includes('asset-img-123'), 'TASK_LIST.md references downloaded asset');
+      assert(savedMd.includes('[TASK.md](./evidence/TEST-101/TASK.md)'), 'TASK_LIST.md links to per-task TASK.md');
+      const taskMdPath = path.join(parentRepo, 'plane', 'evidence', 'TEST-101', 'TASK.md');
+      assert(fs.existsSync(taskMdPath), 'syncProject writes TASK.md inside task evidence folder');
+      const taskMdContent = fs.readFileSync(taskMdPath, 'utf8');
+      assert(taskMdContent.includes('asset-img-123'), 'TASK.md references downloaded asset');
+      assert(taskMdContent.includes('Each slider has a different range'), 'TASK.md includes issue comments');
       assert(!gitx.hasExcludes(subFolder, ['plane/']), 'syncProject does not exclude plane/');
       assert(!gitx.hasExcludes(subFolder, ['TASK_LIST.md']), 'syncProject does not exclude TASK_LIST.md');
     } finally {

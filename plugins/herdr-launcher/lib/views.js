@@ -482,6 +482,15 @@ function planeView() {
         ? ` (${filtered.length} of ${cachedIssues.length} matching "${issueFilter}")`
         : ` (${cachedIssues.length})`;
       const items = [{ type: 'group', label: `ISSUES${filterSuffix}` }];
+      if (this.crawlProgress) {
+        items.push({
+          type: 'item',
+          icon: icon('plane'),
+          iconColor: sgr('plane'),
+          label: this.crawlProgress,
+          disabled: true,
+        });
+      }
 
       if (issueFilter) {
         items.push({
@@ -681,22 +690,28 @@ function planeView() {
     executeCrawl(app, cfg, categories, label) {
       const cwd = app && app.ctx ? app.ctx.cwd : process.cwd();
       const target = cfg.parentRoot || cwd;
-      app.setStatus(`crawling ${label} tasks & evidence…`, 'info');
+      this.crawlProgress = `[0%] crawling ${label} tasks & evidence…`;
+      app.setStatus(this.crawlProgress, 'info');
       mode = 'issues';
       this.actions = getIssueActions();
       this.refresh(app, { force: true });
       plane
         .syncProject(target, cfg, { categories }, (msg) => {
+          this.crawlProgress = msg;
           app.setStatus(msg, 'info');
+          this.renderIssues(app, cfg);
           if (app.render) app.render();
         })
         .then((res) => {
           const wtCount = res.worktrees && res.worktrees.length ? ` (${res.worktrees.length} worktrees)` : '';
-          app.setStatus(`synced ${res.taskCount} tasks (${label}) → plane/TASK_LIST.md${wtCount}`, 'ok');
+          this.crawlProgress = '';
+          app.setStatus(`[100%] synced ${res.taskCount} tasks (${label}) → plane/TASK_LIST.md${wtCount}`, 'ok');
           this.refresh(app, { force: true });
         })
         .catch((err) => {
+          this.crawlProgress = '';
           app.setStatus(`crawl failed: ${err.message.split('\n')[0]}`, 'error');
+          this.renderIssues(app, cfg);
           if (app.render) app.render();
         });
     },

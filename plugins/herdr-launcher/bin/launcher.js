@@ -5,6 +5,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
+if (process.cwd().startsWith('\\\\?\\')) {
+  try {
+    process.chdir(process.cwd().slice(4));
+  } catch (_) {}
+}
+
 const { List } = require('../lib/tui');
 const { App, selfPaneId, requireTTY } = require('../lib/app');
 const { AGENTS } = require('../lib/agents');

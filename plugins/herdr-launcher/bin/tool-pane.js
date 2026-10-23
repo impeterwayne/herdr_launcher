@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
+if (process.cwd().startsWith('\\\\?\\')) {
+  try {
+    process.chdir(process.cwd().slice(4));
+  } catch (_) {}
+}
+
 const { App, selfPaneId, requireTTY } = require('../lib/app');
 const { TOOL_TOKEN } = require('../lib/context');
 const { byKey, TOOLS } = require('../lib/views');
