@@ -2,6 +2,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -250,6 +251,25 @@ function testAppLaunchersDryRun() {
   for (const appKey of ['vscode', 'explorer', 'antigravity', 'android-studio']) {
     const res = runJson(appOpenJs, [appKey, '--dry-run']);
     assert(res.app === appKey && Boolean(res.cwd), `app-open ${appKey} dry-run resolves successfully`);
+  }
+
+  const apps = require('../lib/apps');
+  const asApp = apps.byKey('android-studio');
+  assert(asApp && typeof asApp.discover === 'function', 'android-studio app defines discover function');
+  assert(typeof asApp.validate === 'function', 'android-studio app defines validate function');
+
+  // Verify nested tarball extraction discovery and metadata validation
+  const tmpParent = fs.mkdtempSync(path.join(os.tmpdir(), 'herdr-as-test-'));
+  try {
+    const nestedDir = path.join(tmpParent, 'android-studio-canary-linux', 'android-studio');
+    const binDir = path.join(nestedDir, 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(nestedDir, 'product-info.json'), '{}');
+    const targetScript = path.join(binDir, process.platform === 'win32' ? 'studio64.exe' : 'studio.sh');
+    fs.writeFileSync(targetScript, '#!/bin/sh\n');
+    assert(asApp.validate(targetScript), 'validate passes for executable with product-info.json');
+  } finally {
+    fs.rmSync(tmpParent, { recursive: true, force: true });
   }
 
   const stackModeJs = path.join(BIN_DIR, 'stack-mode.js');

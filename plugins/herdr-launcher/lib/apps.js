@@ -30,18 +30,32 @@ function guiExeBehindShim(shim) {
 }
 
 function hasProductMetadata(exe) {
+  let target = exe;
+  try {
+    target = fs.realpathSync(exe);
+  } catch (_) {}
   if (process.platform === 'darwin') {
-    const dir = path.dirname(exe);
+    const dir = path.dirname(target);
     const contents = path.dirname(dir);
     if (fs.existsSync(path.join(contents, 'Info.plist'))) return true;
     if (fs.existsSync(path.join(contents, 'Resources', 'product-info.json'))) return true;
   }
-  const root = path.dirname(path.dirname(exe));
+  const root = path.dirname(path.dirname(target));
   return fs.existsSync(path.join(root, 'product-info.json')) || fs.existsSync(path.join(root, 'build.txt'));
 }
 
 function jetbrainsInstalls(parents, dirRe, relExe) {
   const found = [];
+  const addIfValid = (exe, rootDir) => {
+    if (!fs.existsSync(exe)) return false;
+    let mtime = 0;
+    try {
+      mtime = fs.statSync(rootDir || exe).mtimeMs;
+    } catch (_) {}
+    found.push({ exe, mtime });
+    return true;
+  };
+
   for (const parent of parents) {
     let entries = [];
     try {
@@ -52,18 +66,112 @@ function jetbrainsInstalls(parents, dirRe, relExe) {
     for (const entry of entries) {
       if (!dirRe.test(entry.name)) continue;
       const root = path.join(parent, entry.name);
-      const exe = path.join(root, relExe);
-      if (!fs.existsSync(exe)) continue;
-      let mtime = 0;
-      try {
-        mtime = fs.statSync(root).mtimeMs;
-      } catch (_) {
+      if (addIfValid(path.join(root, relExe), root)) continue;
 
+      let subEntries = [];
+      try {
+        subEntries = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory());
+      } catch (_) {}
+      for (const sub of subEntries) {
+        if (addIfValid(path.join(root, sub.name, relExe), path.join(root, sub.name))) break;
       }
-      found.push({ exe, mtime });
     }
   }
   return found.sort((a, b) => b.mtime - a.mtime).map((f) => f.exe);
+}
+
+function findAndroidStudioInstalls() {
+  const relExe =
+    process.platform === 'win32'
+      ? path.join('bin', 'studio64.exe')
+      : process.platform === 'darwin'
+      ? path.join('Contents', 'MacOS', 'studio')
+      : path.join('bin', 'studio.sh');
+
+  const parents = [
+    path.join(PF, 'Android'),
+    path.join(PF86, 'Android'),
+    path.join(HOME, 'AppData', 'Local', 'Android'),
+    path.join(HOME, 'Tools'),
+    path.join(HOME, 'Downloads'),
+    path.join(HOME, '.local', 'share'),
+    path.join(HOME, 'Android'),
+    path.join(HOME, 'Applications'),
+    path.join(HOME, 'opt'),
+    '/opt',
+    '/usr/local/share',
+    '/usr/share',
+  ];
+  if (process.platform === 'darwin') {
+    parents.push('/Applications', path.join(HOME, 'Applications'));
+  }
+
+  const found = [];
+  const addHit = (exe, mtimeTarget) => {
+    if (!exe || !fs.existsSync(exe)) return;
+    let mtime = 0;
+    try {
+      mtime = fs.statSync(mtimeTarget || exe).mtimeMs;
+    } catch (_) {}
+    found.push({ exe, mtime });
+  };
+
+  for (const exe of jetbrainsInstalls(parents, /^(android-studio|Android Studio)/i, relExe)) {
+    addHit(exe);
+  }
+
+  // Toolbox installs
+  const toolboxRoots = [
+    path.join(HOME, '.local', 'share', 'JetBrains', 'Toolbox', 'apps'),
+    path.join(HOME, 'AppData', 'Local', 'JetBrains', 'Toolbox', 'apps'),
+    path.join(HOME, 'Library', 'Application Support', 'JetBrains', 'Toolbox', 'apps'),
+  ];
+  for (const tbRoot of toolboxRoots) {
+    let appDirs = [];
+    try {
+      appDirs = fs.readdirSync(tbRoot, { withFileTypes: true }).filter((d) => d.isDirectory());
+    } catch (_) {
+      continue;
+    }
+    for (const appDir of appDirs) {
+      if (!/^(android-studio|AndroidStudio)/i.test(appDir.name)) continue;
+      const fullAppDir = path.join(tbRoot, appDir.name);
+      let channels = [];
+      try {
+        channels = fs.readdirSync(fullAppDir, { withFileTypes: true }).filter((d) => d.isDirectory());
+      } catch (_) {
+        continue;
+      }
+      for (const ch of channels) {
+        const fullCh = path.join(fullAppDir, ch.name);
+        let versions = [];
+        try {
+          versions = fs.readdirSync(fullCh, { withFileTypes: true }).filter((d) => d.isDirectory());
+        } catch (_) {
+          continue;
+        }
+        for (const ver of versions) {
+          const fullVer = path.join(fullCh, ver.name);
+          const exe =
+            process.platform === 'darwin'
+              ? path.join(fullVer, 'Android Studio.app', 'Contents', 'MacOS', 'studio')
+              : path.join(fullVer, relExe);
+          addHit(exe, fullVer);
+        }
+      }
+    }
+  }
+
+  // Desktop entries
+  const desktopHits = findFromDesktopFiles(/(android[-_]?studio|jetbrains[-_]?studio)/i);
+  for (const exe of desktopHits) {
+    addHit(exe);
+  }
+
+  return found
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((f) => f.exe)
+    .filter((exe, idx, arr) => arr.indexOf(exe) === idx);
 }
 
 function findFromDesktopFiles(pattern) {
@@ -234,7 +342,7 @@ const APPS = [
     key: 'android-studio',
     iconKey: 'app-android-studio',
     label: 'Android Studio',
-    fallback: ['studio64', 'studio', 'studio.sh'],
+    fallback: ['studio64', 'studio', 'studio.sh', 'android-studio'],
     procName: 'studio64',
     candidates: [
       path.join(PF, 'Android', 'Android Studio', 'bin', 'studio64.exe'),
@@ -255,31 +363,18 @@ const APPS = [
       '/opt/android-studio-preview/bin/studio.sh',
       '/usr/local/android-studio/bin/studio.sh',
       '/usr/share/android-studio/bin/studio.sh',
+      '/snap/bin/android-studio',
+      '/var/lib/snapd/snap/bin/android-studio',
       path.join(HOME, '.local', 'bin', 'studio'),
       path.join(HOME, '.local', 'bin', 'studio.sh'),
+      path.join(HOME, '.local', 'bin', 'android-studio'),
       '/usr/local/bin/studio',
+      '/usr/local/bin/android-studio',
       '/usr/bin/studio',
+      '/usr/bin/android-studio',
     ],
 
-    discover: () =>
-      jetbrainsInstalls(
-        [
-          path.join(PF, 'Android'),
-          path.join(PF86, 'Android'),
-          path.join(HOME, 'AppData', 'Local', 'Android'),
-          path.join(HOME, 'Tools'),
-          path.join(HOME, 'Downloads'),
-          path.join(HOME, '.local', 'share'),
-          path.join(HOME, 'Android'),
-          path.join(HOME, 'Applications'),
-          path.join(HOME, 'opt'),
-          '/opt',
-          '/usr/local/share',
-          '/usr/share',
-        ],
-        /^(android-studio|Android Studio)/i,
-        process.platform === 'win32' ? path.join('bin', 'studio64.exe') : path.join('bin', 'studio.sh')
-      ),
+    discover: findAndroidStudioInstalls,
     validate: hasProductMetadata,
     argsFor: (cwd) => [cwd],
   },
