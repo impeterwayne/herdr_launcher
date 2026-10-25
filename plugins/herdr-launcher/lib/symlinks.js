@@ -75,7 +75,13 @@ function create(worktreePath, name, targetPath) {
     }
   }
   try {
-    fs.symlinkSync(targetPath, linkPath, LINK_TYPE);
+    let linkType = LINK_TYPE;
+    if (process.platform === 'win32') {
+      try {
+        if (fs.statSync(targetPath).isFile()) linkType = 'file';
+      } catch (_) {}
+    }
+    fs.symlinkSync(targetPath, linkPath, linkType);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -137,7 +143,9 @@ function suggestTargets(worktreePath, managed = []) {
     const key = `${name}|${targetPath}`.toLowerCase();
     if (seen.has(key)) return;
     try {
-      if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) return;
+      if (!fs.existsSync(targetPath)) return;
+      const st = fs.statSync(targetPath);
+      if (!st.isDirectory() && !st.isFile()) return;
       if (readLink(targetPath).isLink) return;
     } catch (_) {
       return;
@@ -159,18 +167,161 @@ function suggestTargets(worktreePath, managed = []) {
   return suggestions;
 }
 
-function browseFolder(initialDir) {
-  if (process.platform === 'win32') {
-    const cleanDir =
-      initialDir && typeof initialDir === 'string'
-        ? initialDir.startsWith('\\\\?\\')
-          ? initialDir.slice(4)
-          : initialDir
-        : initialDir;
+const PORTAL_FOLDER_PICKER_PY = `
+import os
+import sys
+
+EXIT_NOTHING_PICKED = 1
+EXIT_CHOOSER_FAILED = 2
+
+try:
+    import gi
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+except Exception:
+    sys.exit(EXIT_CHOOSER_FAILED)
+
+def main():
+    title = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else "Select folder to link"
+    initial_dir = sys.argv[2] if len(sys.argv) > 2 else ""
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    loop = GLib.MainLoop()
+    uris = []
+    response_code = None
+
+    def on_response(connection, sender, path, interface, signal, params):
+        nonlocal response_code
+        code, results = params.unpack()
+        response_code = code
+        if code == 0:
+            uris.extend(results.get("uris", []))
+        loop.quit()
+
+    def subscribe(path):
+        bus.signal_subscribe(
+            "org.freedesktop.portal.Desktop",
+            "org.freedesktop.portal.Request",
+            "Response",
+            path,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            on_response,
+        )
+
+    token = "herdr%d" % os.getpid()
+    unique = bus.get_unique_name()
+    if not unique:
+        return EXIT_CHOOSER_FAILED
+    sender = unique[1:].replace(".", "_")
+    predicted = "/org/freedesktop/portal/desktop/request/%s/%s" % (sender, token)
+    subscribe(predicted)
+
+    options = {
+        "handle_token": GLib.Variant("s", token),
+        "multiple": GLib.Variant("b", False),
+        "directory": GLib.Variant("b", True),
+        "modal": GLib.Variant("b", True),
+    }
+    if initial_dir and os.path.isdir(initial_dir):
+        options["current_folder"] = GLib.Variant.new_bytestring(os.fsencode(initial_dir))
+
+    try:
+        res = bus.call_sync(
+            "org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.FileChooser",
+            "OpenFile",
+            GLib.Variant("(ssa{sv})", ("", title, options)),
+            None,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+        )
+    except GLib.Error:
+        if "current_folder" in options:
+            options.pop("current_folder", None)
+            res = bus.call_sync(
+                "org.freedesktop.portal.Desktop",
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.FileChooser",
+                "OpenFile",
+                GLib.Variant("(ssa{sv})", ("", title, options)),
+                None,
+                Gio.DBusCallFlags.NONE,
+                -1,
+                None,
+            )
+        else:
+            raise
+
+    handle = res.unpack()[0]
+    if handle != predicted:
+        subscribe(handle)
+
+    GLib.timeout_add_seconds(120, loop.quit)
+    loop.run()
+
+    if response_code is None or response_code == 2:
+        return EXIT_CHOOSER_FAILED
+
+    for uri in uris:
+        selected, _ = GLib.filename_from_uri(uri)
+        if selected:
+            print(selected)
+
+    return 0 if uris else EXIT_NOTHING_PICKED
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception:
+        sys.exit(EXIT_CHOOSER_FAILED)
+`;
+
+function linuxGuiEnv(baseEnv = process.env, existsFn = fs.existsSync) {
+  const env = { ...baseEnv };
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!env.XDG_RUNTIME_DIR && uid !== null) {
+    const runDir = `/run/user/${uid}`;
+    if (existsFn(runDir)) env.XDG_RUNTIME_DIR = runDir;
+  }
+  if (!env.DBUS_SESSION_BUS_ADDRESS && env.XDG_RUNTIME_DIR) {
+    const busPath = path.join(env.XDG_RUNTIME_DIR, 'bus');
+    if (existsFn(busPath)) {
+      env.DBUS_SESSION_BUS_ADDRESS = `unix:path=${busPath}`;
+    }
+  }
+  if (!env.WAYLAND_DISPLAY && env.XDG_RUNTIME_DIR) {
+    try {
+      const sock = fs.readdirSync(env.XDG_RUNTIME_DIR).find((f) => /^wayland-\d+$/.test(f));
+      if (sock) env.WAYLAND_DISPLAY = sock;
+    } catch (_) {}
+  }
+  return env;
+}
+
+function browseFolder(initialDir, options = {}) {
+  const withReason = Boolean(options && options.withReason);
+  const platform = (options && options.platform) || process.platform;
+  const runSpawn = (options && options.spawnSync) || spawnSync;
+  const existsFn = (options && options.existsSync) || fs.existsSync;
+
+  const finish = (selected, { cancelled = false, unavailable = false } = {}) =>
+    withReason ? { selected, cancelled, unavailable } : selected;
+
+  const cleanDir =
+    initialDir && typeof initialDir === 'string'
+      ? initialDir.startsWith('\\\\?\\')
+        ? initialDir.slice(4)
+        : initialDir
+      : initialDir;
+
+  if (platform === 'win32') {
     const target =
-      cleanDir && fs.existsSync(cleanDir)
+      cleanDir && existsFn(cleanDir)
         ? cleanDir
-        : fs.existsSync('D:\\')
+        : existsFn('D:\\')
           ? 'D:\\'
           : '';
     const initial = target ? target.replace(/'/g, "''") : '';
@@ -293,20 +444,22 @@ public class FolderBrowserExpanded {
       $top.Dispose()
     `;
     try {
-      const res = spawnSync('powershell.exe', ['-NoProfile', '-STA', '-Command', psScript], {
+      const res = runSpawn('powershell.exe', ['-NoProfile', '-STA', '-Command', psScript], {
         encoding: 'utf8',
         windowsHide: false,
         timeout: 120000,
       });
-      const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
-      return selected && fs.existsSync(selected) ? path.resolve(selected) : null;
+      if (res && res.error) return finish(null, { unavailable: true });
+      const selected = ((res && res.stdout) || '').trim().split(/\r?\n/).filter(Boolean).pop();
+      if (selected && existsFn(selected)) return finish(path.resolve(selected));
+      return finish(null, { cancelled: true });
     } catch (_) {
-      return null;
+      return finish(null, { unavailable: true });
     }
   }
-  if (process.platform === 'darwin') {
+  if (platform === 'darwin') {
     try {
-      const res = spawnSync(
+      const res = runSpawn(
         'osascript',
         ['-e', 'POSIX path of (choose folder with prompt "Select folder to link")'],
         {
@@ -314,25 +467,109 @@ public class FolderBrowserExpanded {
           timeout: 120000,
         }
       );
-      const selected = (res.stdout || '').trim();
-      return selected && fs.existsSync(selected) ? path.resolve(selected) : null;
+      if (res && res.error) return finish(null, { unavailable: true });
+      const selected = ((res && res.stdout) || '').trim();
+      if (selected && existsFn(selected)) return finish(path.resolve(selected));
+      return finish(null, { cancelled: true });
     } catch (_) {
-      return null;
+      return finish(null, { unavailable: true });
     }
   }
-  try {
-    const res = spawnSync(
-      'zenity',
-      ['--file-selection', '--directory', '--title=Select folder to link'],
-      {
+
+  const title = 'Select folder to link';
+  const targetDir = cleanDir && existsFn(cleanDir) ? path.resolve(cleanDir) : '';
+  const env = linuxGuiEnv(process.env, existsFn);
+
+  // 1. XDG Desktop Portal (org.freedesktop.portal.FileChooser) via Python + GI (Omarchy / Hyprland / GNOME / KDE)
+  const pythonBins = ['/usr/bin/python3', 'python3'];
+  for (const pyBin of pythonBins) {
+    if (pyBin.startsWith('/') && !existsFn(pyBin)) continue;
+    try {
+      const res = runSpawn(pyBin, ['-c', PORTAL_FOLDER_PICKER_PY, title, targetDir], {
         encoding: 'utf8',
         timeout: 120000,
+        env,
+      });
+      if (!res || res.error) continue;
+      if (res.status === 0) {
+        const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+        if (selected && existsFn(selected)) return finish(path.resolve(selected));
+        return finish(null, { cancelled: true });
       }
-    );
-    const selected = (res.stdout || '').trim();
-    if (selected && fs.existsSync(selected)) return path.resolve(selected);
+      if (res.status === 1) {
+        return finish(null, { cancelled: true });
+      }
+    } catch (_) {}
+  }
+
+  // 2. Native Omarchy file chooser CLI (omarchy-file-select)
+  const omarchyBins = [
+    '/usr/bin/omarchy-file-select',
+    '/usr/share/omarchy/bin/omarchy-file-select',
+    'omarchy-file-select',
+  ];
+  for (const omBin of omarchyBins) {
+    if (omBin.startsWith('/') && !existsFn(omBin)) continue;
+    try {
+      const res = runSpawn(omBin, ['--title', title, '--directory'], {
+        encoding: 'utf8',
+        timeout: 120000,
+        env,
+      });
+      if (!res || res.error) continue;
+      if (res.status === 0) {
+        const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+        if (selected && existsFn(selected)) return finish(path.resolve(selected));
+        return finish(null, { cancelled: true });
+      }
+      if (res.status === 1) {
+        return finish(null, { cancelled: true });
+      }
+    } catch (_) {}
+  }
+
+  // 3. GTK / Qt dialog helpers (zenity, yad, qarma, matedialog)
+  for (const bin of ['zenity', 'yad', 'qarma', 'matedialog']) {
+    try {
+      const args = ['--file-selection', '--directory', `--title=${title}`];
+      if (targetDir) args.push(`--filename=${targetDir.replace(/\/?$/, '/')}`);
+      const res = runSpawn(bin, args, {
+        encoding: 'utf8',
+        timeout: 120000,
+        env,
+      });
+      if (!res || res.error) continue;
+      if (res.status === 0) {
+        const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+        if (selected && existsFn(selected)) return finish(path.resolve(selected));
+        return finish(null, { cancelled: true });
+      }
+      if (res.status === 1 || res.status === 5) {
+        return finish(null, { cancelled: true });
+      }
+    } catch (_) {}
+  }
+
+  // 4. KDE kdialog
+  try {
+    const res = runSpawn('kdialog', ['--getexistingdirectory', targetDir || '.', '--title', title], {
+      encoding: 'utf8',
+      timeout: 120000,
+      env,
+    });
+    if (res && !res.error) {
+      if (res.status === 0) {
+        const selected = (res.stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+        if (selected && existsFn(selected)) return finish(path.resolve(selected));
+        return finish(null, { cancelled: true });
+      }
+      if (res.status === 1) {
+        return finish(null, { cancelled: true });
+      }
+    }
   } catch (_) {}
-  return null;
+
+  return finish(null, { unavailable: true });
 }
 
 function addPersistentTarget(name, targetPath) {

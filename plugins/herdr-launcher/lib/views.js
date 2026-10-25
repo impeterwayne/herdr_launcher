@@ -34,6 +34,58 @@ function symlinkView() {
       { key: 'escape', label: 'close' },
     ],
     list: new List([]),
+    browse(app) {
+      const worktree = this.worktree || findRepoRoot(app.ctx.cwd) || app.ctx.cwd;
+      const applySelection = (rawSelected) => {
+        if (!rawSelected || !String(rawSelected).trim()) {
+          if (app) app.setStatus('folder selection cancelled', 'info');
+          if (app && app.render) app.render();
+          return;
+        }
+        const selected = path.resolve(worktree, String(rawSelected).trim());
+        const name = path.basename(selected);
+        const result = symlinks.create(worktree, name, selected);
+        if (result.ok) {
+          symlinks.addPersistentTarget(name, selected);
+        }
+        if (app) {
+          app.setStatus(
+            result.ok ? `linked ${name} → ${selected}` : result.error,
+            result.ok ? 'ok' : 'error'
+          );
+        }
+        this.refresh(app);
+        if (app && app.render) app.render();
+      };
+
+      if (app) {
+        app.setStatus('waiting for folder selection…', 'info');
+        if (app.render) app.render();
+      }
+
+      const raw = symlinks.browseFolder(worktree, { withReason: true });
+      const res =
+        raw && typeof raw === 'object'
+          ? raw
+          : { selected: raw || null, cancelled: !raw, unavailable: false };
+
+      if (res.selected) {
+        applySelection(res.selected);
+        return;
+      }
+
+      if (res.unavailable && app && typeof app.prompt === 'function') {
+        app.prompt('Enter folder or file path to link', { defaultValue: '' }, (entered) => {
+          applySelection(entered);
+        });
+        return;
+      }
+
+      if (app) {
+        app.setStatus('folder selection cancelled', 'info');
+        if (app.render) app.render();
+      }
+    },
     refresh(app) {
       const worktree = findRepoRoot(app.ctx.cwd) || app.ctx.cwd;
       this.worktree = worktree;
@@ -80,19 +132,7 @@ function symlinkView() {
         iconColor: sgr('add'),
         hint: 'choose folder…',
         itemData: { type: 'browse' },
-        run: (a) => {
-          const selected = symlinks.browseFolder(worktree);
-          if (selected) {
-            const name = path.basename(selected);
-            symlinks.addPersistentTarget(name, selected);
-            const result = symlinks.create(worktree, name, selected);
-            a.setStatus(
-              result.ok ? `linked ${name} → ${selected}` : result.error,
-              result.ok ? 'ok' : 'error'
-            );
-            this.refresh(a);
-          }
-        },
+        run: (a) => this.browse(a),
       });
 
       for (const suggestion of suggestions) {
@@ -118,18 +158,7 @@ function symlinkView() {
     onKey(key, app) {
       const current = this.list.current();
       if (key === 'b') {
-        const selected = symlinks.browseFolder(this.worktree || app.ctx.cwd);
-        if (selected) {
-          const name = path.basename(selected);
-          symlinks.addPersistentTarget(name, selected);
-          const result = symlinks.create(this.worktree || app.ctx.cwd, name, selected);
-          app.setStatus(
-            result.ok ? `linked ${name} → ${selected}` : result.error,
-            result.ok ? 'ok' : 'error'
-          );
-          this.refresh(app);
-          app.render();
-        }
+        this.browse(app);
         return true;
       }
       if (key === 'e') {

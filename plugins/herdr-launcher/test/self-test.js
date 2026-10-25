@@ -323,6 +323,59 @@ function testViewComponents() {
     items.some((i) => i.itemData && i.itemData.type === 'browse' && i.label === 'Browse'),
     'symlinkView includes Browse item with label Browse'
   );
+  assert(typeof symlinkView.browse === 'function', 'symlinkView exposes browse() handler');
+
+  // Verify Linux / Omarchy browseFolder fallbacks (XDG portal, omarchy-file-select, zenity, kdialog)
+  const portalRes = symlinksLib.browseFolder(ROOT, {
+    platform: 'linux',
+    existsSync: () => true,
+    spawnSync: (bin) => {
+      if (bin.includes('python3')) return { status: 0, stdout: `${ROOT}\n` };
+      return { error: new Error('ENOENT') };
+    },
+  });
+  assert(portalRes === path.resolve(ROOT), 'browseFolder on Linux resolves folder from XDG Desktop Portal via python3');
+
+  let calledAfterCancel = 0;
+  const cancelRes = symlinksLib.browseFolder(ROOT, {
+    platform: 'linux',
+    withReason: true,
+    existsSync: () => true,
+    spawnSync: (bin) => {
+      if (bin === '/usr/bin/python3') return { status: 1, stdout: '' };
+      calledAfterCancel += 1;
+      return { status: 0, stdout: `${ROOT}\n` };
+    },
+  });
+  assert(
+    cancelRes.selected === null && cancelRes.cancelled === true && calledAfterCancel === 0,
+    'browseFolder stops immediately without launching fallback dialogs when user cancels'
+  );
+
+  const omarchyRes = symlinksLib.browseFolder(ROOT, {
+    platform: 'linux',
+    existsSync: () => true,
+    spawnSync: (bin) => {
+      if (bin.includes('python3')) return { status: 2, stdout: '' };
+      if (bin.includes('omarchy-file-select')) return { status: 0, stdout: `${ROOT}\n` };
+      return { error: new Error('ENOENT') };
+    },
+  });
+  assert(
+    omarchyRes === path.resolve(ROOT),
+    'browseFolder falls back to omarchy-file-select when Python GI portal is unavailable'
+  );
+
+  const unavailableRes = symlinksLib.browseFolder(ROOT, {
+    platform: 'linux',
+    withReason: true,
+    existsSync: () => false,
+    spawnSync: () => ({ error: new Error('ENOENT') }),
+  });
+  assert(
+    unavailableRes.selected === null && unavailableRes.unavailable === true,
+    'browseFolder reports unavailable = true when no Linux GUI chooser exists'
+  );
 
   const openspecLib = require('../lib/openspec');
   assert(typeof openspecLib.isAvailable === 'function', 'openspec.isAvailable is exported');
