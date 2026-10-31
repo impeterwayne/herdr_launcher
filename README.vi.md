@@ -126,7 +126,6 @@ Phím `prefix` mặc định là `ctrl+b`. Thanh bên không tự động hiển
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Khung Terminal nội tại (Native PTY) |
 | `prefix+alt+y` | Công cụ quản lý Symlinks cho workspace |
-| `prefix+alt+s` | Công cụ thiết lập OpenSpec |
 | `prefix+alt+p` | Công cụ quản lý công việc Plane |
 | `prefix+alt+v` | Mở VS Code tại thư mục đang hoạt động |
 | `prefix+alt+e` | Mở File Explorer / Finder tại thư mục đang hoạt động |

@@ -1,7 +1,7 @@
 id = "herdr-launcher"
 name = "herdr-launcher"
 version = "0.1.0"
-description = "Fast YOLO agent launchers (opencode/agy/codex/claude) and a right-docked sidebar for Antigravity, Android Studio, VS Code, Explorer, symlinks, OpenSpec and Plane."
+description = "Fast YOLO agent launchers (opencode/agy/codex/claude) and a right-docked sidebar for Antigravity, Android Studio, VS Code, Explorer, symlinks, and Plane."
 min_herdr_version = "0.8.0"
 platforms = ["linux", "macos", "windows"]
 
@@ -18,14 +18,6 @@ placement = "popup"
 width = 52
 height = "70%"
 command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","symlinks","--popup"];require(r+"/bin/tool-pane.js")']
-
-[[panes]]
-id = "openspec-popup"
-title = "OpenSpec setup"
-placement = "popup"
-width = 44
-height = "70%"
-command = ["node", "-e", 'const p=process.cwd();const r=p.startsWith("\\\\?\\")?p.slice(4):p;process.argv=["node",r+"/bin/tool-pane.js","openspec","--popup"];require(r+"/bin/tool-pane.js")']
 
 [[panes]]
 id = "plane-popup"
@@ -79,12 +71,6 @@ id = "tool-symlinks"
 title = "Symlinks"
 description = "Open the symlink manager as a popup."
 command = ["node", "bin/tool-launch.js", "symlinks"]
-
-[[actions]]
-id = "tool-openspec"
-title = "OpenSpec setup"
-description = "Open the OpenSpec toolkit deployer as a popup."
-command = ["node", "bin/tool-launch.js", "openspec"]
 
 [[actions]]
 id = "tool-plane"

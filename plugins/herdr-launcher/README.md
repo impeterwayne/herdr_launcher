@@ -4,7 +4,7 @@
 
 A lightweight productivity sidebar and fast agent launcher for [Herdr](https://github.com/herdrdev/herdr).
 
-Launch AI coding agents in permission-skipping ("YOLO") mode with one keystroke, and manage workspace tools (Symlinks, OpenSpec, Plane) and desktop apps directly from a right-docked sidebar.
+Launch AI coding agents in permission-skipping ("YOLO") mode with one keystroke, and manage workspace tools (Symlinks, Plane) and desktop apps directly from a right-docked sidebar.
 
 Zero npm dependencies — written in standard CommonJS run directly by Node.js. Verified on Linux, macOS, and Windows 11.
 
@@ -130,7 +130,6 @@ node scripts/self-test.js
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Native Terminal pane |
 | `prefix+alt+y` | Symlinks workspace tool |
-| `prefix+alt+s` | OpenSpec setup tool |
 | `prefix+alt+p` | Plane tasks tool |
 | `prefix+alt+v` | Open VS Code in active directory |
 | `prefix+alt+e` | Reveal active directory in File Explorer |
@@ -178,13 +177,6 @@ Scans sibling git worktrees and suggests links for heavy shared directories (`no
 - Action chips: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc close]`.
 - Custom link targets can be defined in `<config-dir>/symlinks.json`.
 
-### OpenSpec (`prefix+alt+s`)
-Initializes and maintains [OpenSpec](https://github.com/Fission-AI/OpenSpec) components for the current repository using the official `@fission-ai/openspec` CLI directly.
-- Detects whether `openspec` CLI is available on PATH.
-- Supports initializing Core (`openspec/config.yaml`), Antigravity workflows (`.agent/`), Claude Code commands & skills (`.claude/`), Codex skills (`.codex/`), and OpenCode commands & skills (`.opencode/`).
-- Never excludes `openspec/` from Git, preserving Spec-Driven Development (SDD) source control integrity.
-- Keybinding chips: `[⏎ deploy]` `[u update]` `[r reload]` `[esc close]`.
-
 ### Plane Tasks & Evidence Sync (`prefix+alt+p`)
 View Plane issues and selectively sync tasks and evidence media into offline markdown documentation inside `plane/` (`plane/TASK_LIST.md`).
 - **All-Worktree Synchronization**: Automatically shares and links `plane/` (including `plane/TASK_LIST.md` and evidence media) across all sibling git worktrees.
@@ -223,7 +215,7 @@ All helper scripts support `--dry-run` to output machine-readable JSON without a
 node bin/toggle-launcher.js [--cols 20] [--open|--close] [--dry-run]
 
 # Launch workspace tools
-node bin/tool-launch.js <symlinks|openspec|plane> [--dry-run]
+node bin/tool-launch.js <symlinks|plane> [--dry-run]
 
 # Launch coding agents
 node bin/agent-launch.js <agy-yolo|claude-danger|codex-yolo|opencode-auto|terminal> [--reuse] [--dry-run]

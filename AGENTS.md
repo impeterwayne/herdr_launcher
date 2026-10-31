@@ -18,7 +18,7 @@ Instructions and guidelines for AI coding agents implementing features and maint
 
 ### Rule 2: Right-Docked Sidebar for Main Launcher, Modal Popups for Workspace Tools
 - The main launcher menu operates inside the right-docked sidebar (`launcher-sidebar`, `placement = "split"`).
-- Workspace tools (**Symlinks**, **OpenSpec setup**, **Plane tasks**) open as focused modal popups (`symlinks-popup`, `openspec-popup`, `plane-popup`, `placement = "popup"`).
+- Workspace tools (**Symlinks**, **Plane tasks**) open as focused modal popups (`symlinks-popup`, `plane-popup`, `placement = "popup"`).
 - Tool popups close immediately on `esc` / `[esc close]` or `q`.
 - Launch tools via `herdr-launcher.tool-<key>` or `node bin/tool-launch.js <tool-key>`.
 
@@ -74,7 +74,6 @@ Instructions and guidelines for AI coding agents implementing features and maint
 | **Syntax Validation** | `Get-ChildItem -Recurse -Filter *.js \| ForEach-Object { node -c $_.FullName }` |
 | **Toggle Sidebar (dry-run)** | `node plugins/herdr-launcher/bin/toggle-launcher.js --dry-run` |
 | **Symlinks Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js symlinks --dry-run` |
-| **OpenSpec Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js openspec --dry-run` |
 | **Plane Tool (dry-run)** | `node plugins/herdr-launcher/bin/tool-launch.js plane --dry-run` |
 | **Link Plugin to Herdr** | `herdr plugin link ./plugins/herdr-launcher` |
 | **Reload Herdr Config** | `herdr server reload-config` |

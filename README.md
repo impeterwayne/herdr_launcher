@@ -126,7 +126,6 @@ node scripts/self-test.js
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Native Terminal pane |
 | `prefix+alt+y` | Symlinks workspace tool |
-| `prefix+alt+s` | OpenSpec setup tool |
 | `prefix+alt+p` | Plane tasks tool |
 | `prefix+alt+v` | Open VS Code in active directory |
 | `prefix+alt+e` | Reveal active directory in File Explorer |

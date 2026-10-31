@@ -6,7 +6,6 @@ const { List } = require('./tui');
 const { icon, sgr } = require('./icons');
 const { findRepoRoot, configDir, readConfig } = require('./context');
 const symlinks = require('./symlinks');
-const openspec = require('./openspec');
 const plane = require('./plane');
 const apps = require('./apps');
 const path = require('node:path');
@@ -179,84 +178,6 @@ function symlinkView() {
           app.activate(current);
           return true;
         }
-      }
-      return false;
-    },
-    render(height, width) {
-      return this.list.render(height, width);
-    },
-  };
-}
-
-function openspecView() {
-  return {
-    title: 'OpenSpec',
-    actions: [
-      { key: 'enter', label: 'deploy' },
-      { key: 'u', label: 'update' },
-      { key: 'r', label: 'reload' },
-      { key: 'escape', label: 'close' },
-    ],
-    list: new List([]),
-    refresh(app) {
-      const worktree = findRepoRoot(app.ctx.cwd) || app.ctx.cwd;
-      this.worktree = worktree;
-      const available = openspec.isAvailable();
-      const items = [];
-      if (!available) {
-        items.push({ type: 'group', label: 'CLI NOT FOUND' });
-        items.push({
-          type: 'item',
-          icon: icon('empty'),
-          label: 'install: npm i -g @fission-ai/openspec',
-          disabled: true,
-          hint: 'cli required',
-        });
-      } else {
-        items.push({ type: 'group', label: 'COMPONENTS' });
-        for (const component of openspec.status(worktree)) {
-          items.push({
-            type: 'item',
-            label: component.name.replace(/^OpenSpec /, '').replace(/ OpenSpec/, ''),
-            icon: icon(component.deployed ? 'done' : 'add'),
-            iconColor: sgr(component.deployed ? 'done' : 'add'),
-            hint: component.deployed ? 'deployed' : 'missing',
-            disabled: !component.available,
-            run: (a) => {
-              const apply = () => {
-                const action = component.deployed ? openspec.remove : openspec.deploy;
-                const result = action(worktree, component);
-                a.setStatus(
-                  result.ok
-                    ? `${component.deployed ? 'removed' : 'deployed'} ${component.id}`
-                    : result.error,
-                  result.ok ? 'ok' : 'error'
-                );
-                this.refresh(a);
-              };
-
-              if (component.deployed) a.confirm(`remove ${component.id}?`, apply);
-              else apply();
-            },
-          });
-        }
-      }
-      this.list.setItems(items);
-    },
-    onKey(key, app) {
-      if (key === 'u') {
-        if (!openspec.isAvailable()) {
-          app.setStatus('openspec CLI not found', 'error');
-          return true;
-        }
-        const result = openspec.update(this.worktree || app.ctx.cwd);
-        app.setStatus(
-          result.ok ? 'updated OpenSpec instructions' : (result.error || 'update failed'),
-          result.ok ? 'ok' : 'error'
-        );
-        this.refresh(app);
-        app.render();
-        return true;
       }
       return false;
     },
@@ -1007,15 +928,6 @@ const TOOLS = [
     cols: 52,
   },
   {
-    key: 'openspec',
-    label: 'OpenSpec',
-    menuLabel: 'OpenSpec setup',
-    iconKey: 'openspec',
-    popupEntrypoint: 'openspec-popup',
-    view: openspecView,
-    cols: 44,
-  },
-  {
     key: 'plane',
     label: 'Plane',
     menuLabel: 'Plane tasks',
@@ -1028,4 +940,4 @@ const TOOLS = [
 
 const byKey = (key) => TOOLS.find((t) => t.key === key) || null;
 
-module.exports = { TOOLS, byKey, symlinkView, openspecView, planeView, shorten, openBrowser };
+module.exports = { TOOLS, byKey, symlinkView, planeView, shorten, openBrowser };

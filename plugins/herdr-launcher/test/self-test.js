@@ -127,8 +127,6 @@ function testManifest() {
   assert(paneIds.get('launcher-sidebar')?.placement === 'split', 'launcher-sidebar has placement = split');
   assert(paneIds.has('symlinks-popup'), 'symlinks-popup pane defined');
   assert(paneIds.get('symlinks-popup')?.placement === 'popup', 'symlinks-popup has placement = popup');
-  assert(paneIds.has('openspec-popup'), 'openspec-popup pane defined');
-  assert(paneIds.get('openspec-popup')?.placement === 'popup', 'openspec-popup has placement = popup');
   assert(paneIds.has('plane-popup'), 'plane-popup pane defined');
   assert(paneIds.get('plane-popup')?.placement === 'popup', 'plane-popup has placement = popup');
 
@@ -140,7 +138,6 @@ function testManifest() {
   assert(actionIds.has('stack-mode'), 'action stack-mode defined');
   assert(actionIds.has('focus-mode'), 'action focus-mode defined');
   assert(actionIds.has('tool-symlinks'), 'action tool-symlinks defined');
-  assert(actionIds.has('tool-openspec'), 'action tool-openspec defined');
   assert(actionIds.has('tool-plane'), 'action tool-plane defined');
   assert(actionIds.has('agent-terminal'), 'action agent-terminal defined');
 
@@ -175,11 +172,6 @@ function testToolPopupsDryRun() {
   assert(symlinkRes.action === 'open', 'symlinks launch reports action = open');
   assert(symlinkRes.tool === 'symlinks', 'symlinks launch specifies tool = symlinks');
   assert(symlinkRes.entrypoint === 'symlinks-popup', 'symlinks launch targets symlinks-popup');
-
-  const openspecRes = runJson(toolLaunchJs, ['openspec', '--dry-run']);
-  assert(openspecRes.action === 'open', 'openspec launch reports action = open');
-  assert(openspecRes.tool === 'openspec', 'openspec launch specifies tool = openspec');
-  assert(openspecRes.entrypoint === 'openspec-popup', 'openspec launch targets openspec-popup');
 
   const planeRes = runJson(toolLaunchJs, ['plane', '--dry-run']);
   assert(planeRes.action === 'open', 'plane launch reports action = open');
@@ -295,7 +287,7 @@ function testViewComponents() {
   const views = require('../lib/views');
   const { App } = require('../lib/app');
 
-  assert(Array.isArray(views.TOOLS) && views.TOOLS.length === 3, 'views.TOOLS contains 3 workspace tools');
+  assert(Array.isArray(views.TOOLS) && views.TOOLS.length === 2, 'views.TOOLS contains 2 workspace tools');
 
   const symlinkDef = views.byKey('symlinks');
   assert(symlinkDef?.popupEntrypoint === 'symlinks-popup', 'symlinks has popupEntrypoint symlinks-popup');
@@ -376,43 +368,6 @@ function testViewComponents() {
     unavailableRes.selected === null && unavailableRes.unavailable === true,
     'browseFolder reports unavailable = true when no Linux GUI chooser exists'
   );
-
-  const openspecLib = require('../lib/openspec');
-  assert(typeof openspecLib.isAvailable === 'function', 'openspec.isAvailable is exported');
-  assert(typeof openspecLib.cliPath === 'function', 'openspec.cliPath is exported');
-  assert(typeof openspecLib.toolkitRoot === 'function', 'openspec.toolkitRoot is exported');
-  assert(typeof openspecLib.deploy === 'function', 'openspec.deploy is exported');
-  assert(typeof openspecLib.remove === 'function', 'openspec.remove is exported');
-  assert(typeof openspecLib.update === 'function', 'openspec.update is exported');
-  const openspecStatus = openspecLib.status(ROOT);
-  assert(openspecStatus.length === 5, 'openspec.status returns all 5 components');
-  if (openspecLib.isAvailable()) {
-    assert(openspecStatus.every((c) => c.available), 'all openspec components are available when CLI is installed');
-  } else {
-    assert(openspecStatus.every((c) => !c.available), 'all openspec components are unavailable when CLI is missing');
-  }
-
-  const openspecDef = views.byKey('openspec');
-  assert(openspecDef?.popupEntrypoint === 'openspec-popup', 'openspec has popupEntrypoint openspec-popup');
-  const openspecView = openspecDef.view();
-  assert(openspecView.actions.some((a) => a.key === 'escape' && a.label === 'close'), 'openspecView action footer includes [esc close]');
-  assert(openspecView.actions.some((a) => a.key === 'u' && a.label === 'update'), 'openspecView action footer includes [u update]');
-  openspecView.refresh(mockApp);
-  if (openspecLib.isAvailable()) {
-    assert(
-      !openspecView.list.items.some((i) => i.label === 'CLI NOT FOUND'),
-      'openspecView does not show CLI NOT FOUND when CLI is installed'
-    );
-    assert(
-      openspecView.list.items.some((i) => i.label && i.label.includes('Core Infrastructure')),
-      'openspecView renders Core Infrastructure component'
-    );
-  } else {
-    assert(
-      openspecView.list.items.some((i) => i.label === 'CLI NOT FOUND'),
-      'openspecView shows CLI NOT FOUND when CLI is missing'
-    );
-  }
 
   const planeDef = views.byKey('plane');
   assert(planeDef?.popupEntrypoint === 'plane-popup', 'plane has popupEntrypoint plane-popup');

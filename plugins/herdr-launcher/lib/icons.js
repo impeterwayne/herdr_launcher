@@ -18,7 +18,6 @@ const TABLE = {
   'focus-mode': ['\u{EB69}', 'SM', 'cod-screen_full', '#7DCFFF'],
 
   symlinks: ['\u{EAED}', 'LN', 'cod-file_symlink_directory', '#7AA2F7'],
-  openspec: ['\u{F0219}', 'SP', 'md-file_document', '#9ECE6A'],
   plane: ['\u{EAB3}', 'PL', 'cod-checklist', '#BB9AF7'],
 
   link: ['\u{EB15}', 'LN', 'cod-link', '#7AA2F7'],

@@ -4,7 +4,7 @@
 
 Thanh bên (sidebar) tăng hiệu suất làm việc gọn nhẹ và trình khởi chạy AI coding agent tốc độ cao dành cho [Herdr](https://github.com/herdrdev/herdr).
 
-Khởi chạy các coding agent AI ở chế độ tự động hóa ("YOLO mode" / bỏ qua xác nhận quyền) chỉ với một phím tắt duy nhất, đồng thời quản lý trực tiếp các công cụ không gian làm việc (Symlinks, OpenSpec, Plane) và ứng dụng desktop ngay từ thanh bên gắn cố định bên phải (right-docked sidebar).
+Khởi chạy các coding agent AI ở chế độ tự động hóa ("YOLO mode" / bỏ qua xác nhận quyền) chỉ với một phím tắt duy nhất, đồng thời quản lý trực tiếp các công cụ không gian làm việc (Symlinks, Plane) và ứng dụng desktop ngay từ thanh bên gắn cố định bên phải (right-docked sidebar).
 
 **Không phụ thuộc vào thư viện npm bên ngoài (Zero npm dependencies)** — được viết hoàn toàn bằng CommonJS tiêu chuẩn chạy trực tiếp trên Node.js. Đã kiểm thử và hoạt động ổn định trên Linux, macOS và Windows 11.
 
@@ -22,7 +22,6 @@ Khởi chạy các coding agent AI ở chế độ tự động hóa ("YOLO mode
 - **Hỗ trợ thao tác Chuột & Bàn phím đầy đủ**: Điều hướng bằng phím mũi tên, phím Vim (`j`/`k`), click chuột, double-click và cuộn chuột mượt mà.
 - **Quản lý Symlink thông minh**: Tự động phát hiện các Git worktree lân cận và tạo liên kết (NTFS junction trên Windows không cần quyền Admin, Symlink trên Unix) cho các thư mục nặng như `node_modules`, `build`, `.venv`, `.gradle`.
 - **Tích hợp Plane Tasks & Evidence Sync**: Xem danh sách công việc trên Plane, tải về tài liệu Markdown ngoại tuyến và tự động tải ảnh/video bằng chứng vào thư mục dự án.
-- **Tích hợp OpenSpec**: Thiết lập và quản lý các thành phần OpenSpec cho dự án trực tiếp qua OpenSpec CLI chính thức, bảo toàn quyền theo dõi của Git cho SDD.
 - **Chế độ Ngăn xếp (Stack Mode)**: Phóng to khung làm việc chính chiếm ~90% chiều rộng tab trong khi vẫn giữ thanh launcher cố định bên phải.
 - **Trình mở ứng dụng Desktop**: Mở nhanh VS Code, Antigravity IDE, Android Studio, File Explorer / Finder tại thư mục hiện hành.
 
@@ -139,7 +138,6 @@ Phím `prefix` mặc định là `ctrl+b`. Thanh bên không tự động hiển
 | `prefix+alt+o` | OpenCode (`--auto`) |
 | `prefix+alt+t` | Khung Terminal nội tại (Native PTY) |
 | `prefix+alt+y` | Công cụ quản lý Symlinks cho workspace |
-| `prefix+alt+s` | Công cụ thiết lập OpenSpec |
 | `prefix+alt+p` | Công cụ quản lý công việc Plane |
 | `prefix+alt+v` | Mở VS Code tại thư mục đang hoạt động |
 | `prefix+alt+e` | Mở File Explorer / Finder tại thư mục đang hoạt động |
@@ -187,13 +185,6 @@ Quét các git worktree liền kề và gợi ý liên kết các thư mục n�
 - Các nút hành động: `[⏎ link]` `[b browse]` `[e explore]` `[d delete]` `[r reload]` `[esc close]`.
 - Bạn có thể khai báo thêm các đường dẫn liên kết tùy chỉnh trong tệp `<config-dir>/symlinks.json`.
 
-### OpenSpec (`prefix+alt+s`)
-Khởi tạo và quản lý các thành phần [OpenSpec](https://github.com/Fission-AI/OpenSpec) cho kho lưu trữ hiện tại trực tiếp qua `@fission-ai/openspec` CLI.
-- Tự động nhận diện `openspec` CLI có sẵn trên hệ thống hay không (không dùng fallback sao chép tệp mẫu cục bộ).
-- Hỗ trợ thiết lập Core (`openspec/config.yaml`), Antigravity workflows (`.agent/`), Claude Code commands & skills (`.claude/`), Codex skills (`.codex/`), và OpenCode commands & skills (`.opencode/`).
-- Tuyệt đối không thêm `openspec/` vào `.git/info/exclude`, bảo đảm tính toàn vẹn của mô hình Spec-Driven Development (SDD) trên Git.
-- Các phím thao tác: `[⏎ deploy]` `[u update]` `[r reload]` `[esc close]`.
-
 ### Plane Tasks & Đồng bộ Bằng chứng (`prefix+alt+p`)
 Xem các issue trên Plane, đồng bộ có chọn lọc các tác vụ và tải dữ liệu bằng chứng (hình ảnh, video đính kèm) thành tài liệu Markdown ngoại tuyến bên trong thư mục `plane/` (`plane/TASK_LIST.md`).
 - **Đồng bộ toàn bộ Worktree**: Tự động chia sẻ và liên kết thư mục `plane/` (bao gồm `plane/TASK_LIST.md` và bằng chứng ngoại tuyến) đến tất cả các git worktree liên quan.
@@ -232,7 +223,7 @@ Tất cả các script trong thư mục `bin/` đều hỗ trợ cờ `--dry-run
 node bin/toggle-launcher.js [--cols 20] [--open|--close] [--dry-run]
 
 # Khởi chạy các công cụ workspace
-node bin/tool-launch.js <symlinks|openspec|plane> [--dry-run]
+node bin/tool-launch.js <symlinks|plane> [--dry-run]
 
 # Khởi chạy coding agent
 node bin/agent-launch.js <agy-yolo|claude-danger|codex-yolo|opencode-auto|terminal> [--reuse] [--dry-run]

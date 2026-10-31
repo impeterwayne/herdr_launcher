@@ -17,12 +17,6 @@ command = "herdr-launcher.tool-symlinks"
 description = "symlinks"
 
 [[keys.command]]
-key = "prefix+alt+s"
-type = "plugin_action"
-command = "herdr-launcher.tool-openspec"
-description = "OpenSpec setup"
-
-[[keys.command]]
 key = "prefix+alt+p"
 type = "plugin_action"
 command = "herdr-launcher.tool-plane"
